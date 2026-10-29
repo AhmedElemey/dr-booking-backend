@@ -31,9 +31,20 @@ jobs:
         with:
           dotnet-version: "8.0.x"
       - run: dotnet restore
+      - run: dotnet tool restore
       - run: dotnet format --verify-no-changes --no-restore
       - run: dotnet build -warnaserror --no-restore
       - run: dotnet test --no-build
+      - name: Export openapi.json
+        run: dotnet swagger tofile --output openapi.json src/Moonlight.Api/bin/Debug/net8.0/Moonlight.Api.dll v1
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          ConnectionStrings__Default: Host=localhost;Database=unused;Username=unused;Password=unused
+          Jwt__Key: openapi-export-only-key-not-a-secret-0000000000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: openapi.json
 
   docker:
     if: github.event_name == 'push'
