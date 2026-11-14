@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{BF308279-CAB6-4383-AFA3-B68AD79BA019}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moonlight.Api", "src\Moonlight.Api\Moonlight.Api.csproj", "{79DADE73-C318-4BCA-BFB5-3424C833A96E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{FBE02D28-14B2-47D5-A63F-A806731E43A0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moonlight.Tests", "tests\Moonlight.Tests\Moonlight.Tests.csproj", "{CDE12342-AF94-404D-BAD9-686C578581AA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{79DADE73-C318-4BCA-BFB5-3424C833A96E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{79DADE73-C318-4BCA-BFB5-3424C833A96E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{79DADE73-C318-4BCA-BFB5-3424C833A96E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{79DADE73-C318-4BCA-BFB5-3424C833A96E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CDE12342-AF94-404D-BAD9-686C578581AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CDE12342-AF94-404D-BAD9-686C578581AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CDE12342-AF94-404D-BAD9-686C578581AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CDE12342-AF94-404D-BAD9-686C578581AA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{79DADE73-C318-4BCA-BFB5-3424C833A96E} = {BF308279-CAB6-4383-AFA3-B68AD79BA019}
+		{CDE12342-AF94-404D-BAD9-686C578581AA} = {FBE02D28-14B2-47D5-A63F-A806731E43A0}
+	EndGlobalSection
+EndGlobal
