@@ -1,39 +1,45 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Infrastructure;
+using Moonlight.Api.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
-
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
-
-builder.Services.AddDbContext<MoonlightDbContext>(options => options.UseNpgsql(connectionString));
-builder.Services.AddHealthChecks().AddNpgSql(connectionString, name: "database");
-builder.Services.AddProblemDetails();
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
-builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+builder.AddMoonlight();
 
 var app = builder.Build();
 
 app.UseExceptionHandler();
-app.UseStatusCodePages();
+app.UseStatusCodePages(context => Problems.WriteAsync(context.HttpContext, ErrorCodes.FromStatus(context.HttpContext.Response.StatusCode)));
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "Moonlight API v1"));
 
+    // Migrations and demo data run on startup in Development only; production migrates in an explicit CI/CD step.
     using var scope = app.Services.CreateScope();
-    scope.ServiceProvider.GetRequiredService<MoonlightDbContext>().Database.Migrate();
+    var db = scope.ServiceProvider.GetRequiredService<MoonlightDbContext>();
+    await db.Database.MigrateAsync();
+    await DevSeeder.SeedAsync(db, scope.ServiceProvider.GetRequiredService<TimeProvider>(), app.Logger);
 }
 
+var storage = app.Services.GetRequiredService<IOptions<StorageOptions>>().Value;
+var uploadsRoot = LocalDiskPhotoStorage.Root(storage, app.Environment);
+Directory.CreateDirectory(uploadsRoot);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadsRoot),
+    RequestPath = storage.RequestPath,
+});
+
 app.UseCors();
+app.UseOtpPhoneCapture();
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapHealthEndpoint();
 app.MapControllers();
 
