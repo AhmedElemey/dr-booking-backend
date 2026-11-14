@@ -17,9 +17,15 @@ public sealed class MoonlightApiFactory : WebApplicationFactory<Program>
     private readonly string _connectionString;
     private readonly string _environment;
     private readonly Dictionary<string, string?> _settings;
+    private readonly Action<IServiceCollection>? _configureServices;
 
-    public MoonlightApiFactory(string connectionString, string environment = "Testing", Dictionary<string, string?>? settings = null)
+    public MoonlightApiFactory(
+        string connectionString,
+        string environment = "Testing",
+        Dictionary<string, string?>? settings = null,
+        Action<IServiceCollection>? configureServices = null)
     {
+        _configureServices = configureServices;
         _connectionString = connectionString;
         _environment = environment;
         _settings = settings ?? [];
@@ -60,6 +66,7 @@ public sealed class MoonlightApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IPushSender>(Push);
             services.RemoveAll<ISmsSender>();
             services.AddSingleton<ISmsSender>(Sms);
+            _configureServices?.Invoke(services);
         });
     }
 }
