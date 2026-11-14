@@ -4,6 +4,7 @@ using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
 using Moonlight.Api.Features.Auth;
 using Moonlight.Api.Features.Dashboard;
+using Moonlight.Api.Features.Flags;
 using Moonlight.Api.Infrastructure;
 
 namespace Moonlight.Api.Features.Admin;
@@ -25,7 +26,7 @@ public sealed record CreateUserDto(string? Phone, string? FullName, UserRole? Ro
 
 public sealed record AdminUserDto(Guid Id, string Phone, string? FullName, UserRole Role, bool IsActive, Guid? ClinicId, Guid? DoctorId);
 
-public sealed class AdminService(MoonlightDbContext db, CurrentUser current, TimeProvider clock)
+public sealed class AdminService(MoonlightDbContext db, CurrentUser current, TimeProvider clock, FeatureService features)
 {
     public async Task<PagedResult<ClinicDto>> ListClinicsAsync(PageRequest page, CancellationToken ct) =>
         await db.Clinics.AsNoTracking().OrderBy(c => c.NameEn).ThenBy(c => c.Id).ToPagedAsync(
@@ -33,6 +34,12 @@ public sealed class AdminService(MoonlightDbContext db, CurrentUser current, Tim
 
     public async Task<ClinicDto> CreateClinicAsync(CreateClinicDto request, CancellationToken ct)
     {
+        // A single-branch clinic has exactly one clinic row; the first one is always allowed.
+        if (!features.IsEnabled(FeatureKeys.MultiBranch) && await db.Clinics.AnyAsync(ct))
+        {
+            throw ApiException.FeatureDisabled(FeatureKeys.MultiBranch);
+        }
+
         var city = ReferenceData.Cities.FirstOrDefault(c => c.Equals(request.City?.Trim(), StringComparison.OrdinalIgnoreCase));
         var timezone = string.IsNullOrWhiteSpace(request.Timezone) ? Clinic.DefaultTimezone : request.Timezone.Trim();
         new ValidationErrors()

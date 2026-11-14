@@ -14,16 +14,17 @@ var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages(context => Problems.WriteAsync(context.HttpContext, ErrorCodes.FromStatus(context.HttpContext.Response.StatusCode)));
 
+var clinicName = app.Services.GetRequiredService<ClinicConfig>().Name.En;
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "Moonlight API v1"));
+    app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", $"{clinicName} API v1"));
 
     // Migrations and demo data run on startup in Development only; production migrates in an explicit CI/CD step.
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<MoonlightDbContext>();
     await db.Database.MigrateAsync();
-    await DevSeeder.SeedAsync(db, scope.ServiceProvider.GetRequiredService<TimeProvider>(), app.Logger);
+    await DevSeeder.SeedAsync(db, scope.ServiceProvider.GetRequiredService<ClinicConfig>(), scope.ServiceProvider.GetRequiredService<TimeProvider>(), app.Logger);
 }
 
 var storage = app.Services.GetRequiredService<IOptions<StorageOptions>>().Value;

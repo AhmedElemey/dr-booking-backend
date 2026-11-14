@@ -1,6 +1,6 @@
 namespace Moonlight.Api.Common;
 
-public sealed class ApiException(string code, string? detail = null, IDictionary<string, string[]>? errors = null)
+public sealed class ApiException(string code, string? detail = null, IDictionary<string, string[]>? errors = null, IDictionary<string, object?>? extensions = null)
     : Exception(detail ?? code)
 {
     public string Code { get; } = code;
@@ -8,6 +8,12 @@ public sealed class ApiException(string code, string? detail = null, IDictionary
     public string? Detail { get; } = detail;
 
     public IDictionary<string, string[]>? Errors { get; } = errors;
+
+    /// <summary>Extra top-level members of the problem body (e.g. <c>feature</c>).</summary>
+    public IDictionary<string, object?>? Extensions { get; } = extensions;
+
+    public static ApiException FeatureDisabled(string feature) =>
+        new(ErrorCodes.FeatureDisabled, extensions: new Dictionary<string, object?> { ["feature"] = feature });
 
     public static ApiException NotFound() => new(ErrorCodes.NotFound);
 
@@ -31,6 +37,7 @@ public static class ErrorCodes
     public const string CancelWindowPassed = "CANCEL_WINDOW_PASSED";
     public const string PhoneInUse = "PHONE_IN_USE";
     public const string BookingLimit = "BOOKING_LIMIT";
+    public const string FeatureDisabled = "FEATURE_DISABLED";
     public const string RateLimited = "RATE_LIMITED";
     public const string InternalError = "INTERNAL_ERROR";
 
@@ -52,6 +59,7 @@ public static class ErrorCodes
         [CancelWindowPassed] = new(409, "Cancellation window passed", "انتهت مهلة الإلغاء", "It is too late to change this appointment. Please call the clinic.", "فات وقت تعديل الحجز. من فضلك اتصل بالعيادة."),
         [PhoneInUse] = new(409, "Phone number in use", "رقم الهاتف مستخدم", "This phone number belongs to another account type.", "رقم الهاتف مرتبط بنوع حساب آخر."),
         [BookingLimit] = new(409, "Booking limit reached", "تم الوصول للحد الأقصى للحجوزات", "You have reached the booking limit. Cancel an upcoming booking or pick another day.", "وصلت للحد الأقصى للحجوزات. ألغِ حجزا قادما أو اختر يوما آخر."),
+        [FeatureDisabled] = new(403, "Feature unavailable", "الخدمة غير متاحة", "This feature is turned off for this clinic. Please call the clinic.", "هذه الخدمة غير مفعلة لدى العيادة. من فضلك اتصل بالعيادة."),
         [RateLimited] = new(429, "Too many requests", "طلبات كثيرة", "Too many requests. Please try again later.", "طلبات كثيرة جدا. حاول مرة أخرى لاحقا."),
         [InternalError] = new(500, "Internal error", "خطأ داخلي", "Something went wrong.", "حدث خطأ ما."),
     };

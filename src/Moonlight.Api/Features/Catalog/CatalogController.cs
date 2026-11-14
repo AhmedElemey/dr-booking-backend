@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 using Moonlight.Api.Common;
+using Moonlight.Api.Features.Flags;
 
 namespace Moonlight.Api.Features.Catalog;
 
@@ -23,8 +24,9 @@ public class CatalogController(CatalogService catalog) : ControllerBase
     [ProducesResponseType(typeof(List<string>), StatusCodes.Status200OK)]
     public Task<List<string>> Cities(CancellationToken ct) => catalog.CitiesAsync(ct);
 
-    /// <summary>Search published doctors by specialty, city and name.</summary>
+    /// <summary>Search published doctors by specialty, city and name. Needs sign-in when the guestBrowsing feature is off (401).</summary>
     [HttpGet("doctors")]
+    [RequireSignInUnlessGuestBrowsing]
     [ProducesResponseType(typeof(PagedResult<DoctorSummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
     public Task<PagedResult<DoctorSummaryDto>> Doctors(
@@ -33,12 +35,14 @@ public class CatalogController(CatalogService catalog) : ControllerBase
 
     /// <summary>Public doctor profile with clinic info and active services. Accepts the doctor's id or slug.</summary>
     [HttpGet("doctors/{idOrSlug}")]
+    [RequireSignInUnlessGuestBrowsing]
     [ProducesResponseType(typeof(DoctorProfileDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
     public Task<DoctorProfileDto> Doctor(string idOrSlug, CancellationToken ct) => catalog.GetDoctorAsync(idOrSlug, ct);
 
     /// <summary>Open slots of a published doctor, grouped by clinic-local day. <c>from</c>/<c>to</c> are clinic-local dates, at most 14 days.</summary>
     [HttpGet("doctors/{idOrSlug}/slots")]
+    [RequireSignInUnlessGuestBrowsing]
     [ProducesResponseType(typeof(DoctorSlotsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]

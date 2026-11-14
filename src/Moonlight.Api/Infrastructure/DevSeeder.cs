@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
 
 namespace Moonlight.Api.Infrastructure;
@@ -15,7 +16,7 @@ public static class DevSeeder
     public const string DoctorYoussefPhone = "+201000000013";
     public const int SlotDays = 14;
 
-    public static async Task SeedAsync(MoonlightDbContext db, TimeProvider clock, ILogger logger, CancellationToken ct = default)
+    public static async Task SeedAsync(MoonlightDbContext db, ClinicConfig config, TimeProvider clock, ILogger logger, CancellationToken ct = default)
     {
         var now = clock.GetUtcNow().UtcDateTime;
 
@@ -37,7 +38,7 @@ public static class DevSeeder
             db.Clinics.Add(clinic);
         }
 
-        await EnsureUserAsync(db, AdminPhone, "Moonlight Admin", UserRole.PlatformAdmin, now, ct);
+        await EnsureUserAsync(db, AdminPhone, $"{config.Name.En} Admin", UserRole.PlatformAdmin, now, ct);
         var staff = await EnsureUserAsync(db, StaffPhone, "Mona Reception", UserRole.ClinicStaff, now, ct);
         if (!await db.ClinicStaff.AnyAsync(s => s.UserId == staff.Id, ct))
         {

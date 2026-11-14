@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
+using Moonlight.Api.Features.Flags;
 
 namespace Moonlight.Api.Features.Appointments;
 
@@ -44,6 +45,7 @@ public class AppointmentsController(AppointmentService appointments) : Controlle
 
     /// <summary>Cancel an appointment until the cancel window before it starts. Frees the slot immediately.</summary>
     [HttpPost("{id:guid}/cancel")]
+    [RequireFeature(FeatureKeys.PatientSelfService)]
     [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
@@ -52,6 +54,7 @@ public class AppointmentsController(AppointmentService appointments) : Controlle
 
     /// <summary>Move an appointment to another open slot of the same doctor (cancel window applies).</summary>
     [HttpPost("{id:guid}/reschedule")]
+    [RequireFeature(FeatureKeys.PatientSelfService)]
     [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]

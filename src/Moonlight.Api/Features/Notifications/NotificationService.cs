@@ -5,18 +5,21 @@ using Microsoft.Extensions.Options;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
+using Moonlight.Api.Features.Flags;
 using Moonlight.Api.Infrastructure;
 using Moonlight.Api.Infrastructure.Fcm;
 using Moonlight.Api.Infrastructure.Sms;
 
 namespace Moonlight.Api.Features.Notifications;
 
-// Push (FCM) to every device token of the patient; SMS only when enabled and the patient has no device token.
+// Push (FCM) to every device token of the patient; SMS only when enabled (Sms:NotificationsEnabled or the smsNotifications
+// feature) and the patient has no device token or pushes are off.
 public sealed class NotificationService(
     MoonlightDbContext db,
     IPushSender push,
     ISmsSender sms,
     IOptions<SmsOptions> smsOptions,
+    FeatureService features,
     ILogger<NotificationService> logger) : INotificationService
 {
     public Task AppointmentConfirmedAsync(Guid appointmentId, CancellationToken ct = default) =>
@@ -43,7 +46,12 @@ public sealed class NotificationService(
 
             var patient = appointment.Patient!;
             var message = Compose(appointment, patient.PreferredLanguage, kind);
-            var tokens = await db.DeviceTokens.Where(t => t.UserId == patient.Id).Select(t => t.FcmToken).ToListAsync(ct);
+
+            // pushReminders gates the confirmation and reminder pushes; a clinic cancellation is always pushed.
+            var pushEnabled = kind == NotificationKind.CancelledByClinic || features.IsEnabled(FeatureKeys.PushReminders);
+            var tokens = pushEnabled
+                ? await db.DeviceTokens.Where(t => t.UserId == patient.Id).Select(t => t.FcmToken).ToListAsync(ct)
+                : [];
 
             if (tokens.Count > 0)
             {
@@ -53,7 +61,7 @@ public sealed class NotificationService(
                     await db.DeviceTokens.Where(t => invalid.Contains(t.FcmToken)).ExecuteDeleteAsync(ct);
                 }
             }
-            else if (smsOptions.Value.NotificationsEnabled)
+            else if (smsOptions.Value.NotificationsEnabled || features.IsEnabled(FeatureKeys.SmsNotifications))
             {
                 await sms.SendAsync(patient.Phone, $"{message.Title}: {message.Body}", ct);
             }

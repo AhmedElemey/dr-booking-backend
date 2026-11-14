@@ -337,6 +337,34 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.ToTable("doctors", (string)null);
                 });
 
+            modelBuilder.Entity("Moonlight.Api.Domain.FeatureState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("ConsoleUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("console_updated_at");
+
+                    b.Property<string>("Features")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("features");
+
+                    b.Property<DateTime>("FetchedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fetched_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_feature_state");
+
+                    b.ToTable("feature_state", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_feature_state_singleton", "id = 1");
+                        });
+                });
+
             modelBuilder.Entity("Moonlight.Api.Domain.OtpCode", b =>
                 {
                     b.Property<Guid>("Id")
