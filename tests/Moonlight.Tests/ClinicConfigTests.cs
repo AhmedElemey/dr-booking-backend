@@ -48,15 +48,21 @@ public sealed class ClinicConfigTests : IDisposable
     public void The_shipped_config_is_valid_and_keeps_todays_identity()
     {
         var config = ClinicConfigLoader.LoadFile(Path.Combine(RepoRoot, "clinic.config.json"));
+        var raw = ValidJson();
 
-        Assert.Equal("moonlight", config.Slug);
-        Assert.Equal("Moonlight", config.Name.En);
-        Assert.Equal("مونلايت", config.Name.Ar);
-        Assert.Equal("#3F3CCF", config.Colors.Primary);
-        Assert.Equal("com.moonlight.app", config.Mobile.AndroidApplicationId);
+        // Whatever clinic this repo was made for, the loaded config must mirror its clinic.config.json exactly.
+        Assert.Equal(raw["slug"]!.GetValue<string>(), config.Slug);
+        Assert.Equal(raw["name"]!["en"]!.GetValue<string>(), config.Name.En);
+        Assert.Equal(raw["name"]!["ar"]!.GetValue<string>(), config.Name.Ar);
+        Assert.Equal(raw["colors"]!["primary"]!.GetValue<string>(), config.Colors.Primary);
+        Assert.Equal(raw["mobile"]!["androidApplicationId"]!.GetValue<string>(), config.Mobile.AndroidApplicationId);
+        Assert.Equal(raw["supportPhone"]!.GetValue<string>(), config.SupportPhone);
         Assert.True(File.Exists(config.LogoPath));
         Assert.Equal(FeatureKeys.All.Order(), config.Features.Keys.Order());
-        Assert.False(config.Features[FeatureKeys.SmsNotifications]);
+        foreach (var key in FeatureKeys.All)
+        {
+            Assert.Equal(raw["features"]![key]!.GetValue<bool>(), config.Features[key]);
+        }
     }
 
     [Fact]

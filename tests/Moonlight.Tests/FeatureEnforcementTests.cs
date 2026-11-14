@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
+using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
 using Moonlight.Api.Features.Flags;
 
@@ -190,8 +191,9 @@ public class FeatureEnforcementTests(PostgresFixture db) : AppointmentTestBase(d
 
         Assert.Equal(204, response.StatusCode);
         var message = Assert.Single(Factory.Sms.Sent).Message;
-        Assert.Contains("مونلايت", message);
-        Assert.Contains("Your Moonlight code", message);
+        var clinic = Factory.Services.GetRequiredService<ClinicConfig>();
+        Assert.Contains(clinic.Name.Ar, message);
+        Assert.Contains($"Your {clinic.Name.En} code", message);
     }
 }
 
