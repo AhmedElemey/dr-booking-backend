@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json.Nodes;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,20 @@ public sealed class FeaturesEndpointTests : IAsyncLifetime
     {
         await _plain.DisposeAsync();
         await _db.DisposeAsync();
+    }
+
+    private static string ShippedConfigPath()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, "clinic.config.json");
+            if (File.Exists(candidate) && File.Exists(Path.Combine(dir.FullName, "Moonlight.sln")))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException("Repository root not found.");
     }
 
     private static readonly Dictionary<string, string?> ConsoleSettingsMap = new()
@@ -69,13 +84,15 @@ public sealed class FeaturesEndpointTests : IAsyncLifetime
         using var client = _plain.CreateClient();
         var branding = await new Session(client).GetAsync("/api/v1/branding");
 
-        Assert.Equal("moonlight", branding["slug"].GetString());
-        Assert.Equal("Moonlight", branding["name"].GetProperty("en").GetString());
-        Assert.Equal("مونلايت", branding["name"].GetProperty("ar").GetString());
-        Assert.Equal("Book your dentist in a minute", branding["tagline"].GetProperty("en").GetString());
-        Assert.Equal("#3F3CCF", branding["colors"].GetProperty("primary").GetString());
-        Assert.Equal("#0E9F9A", branding["colors"].GetProperty("accent").GetString());
-        Assert.Equal("+201000000000", branding["supportPhone"].GetString());
+        var shipped = JsonNode.Parse(File.ReadAllText(ShippedConfigPath()))!;
+        Assert.Equal(shipped["slug"]!.GetValue<string>(), branding["slug"].GetString());
+        Assert.Equal(shipped["name"]!["en"]!.GetValue<string>(), branding["name"].GetProperty("en").GetString());
+        Assert.Equal(shipped["name"]!["ar"]!.GetValue<string>(), branding["name"].GetProperty("ar").GetString());
+        Assert.Equal(shipped["tagline"]!["en"]!.GetValue<string>(), branding["tagline"].GetProperty("en").GetString());
+        Assert.Equal(shipped["tagline"]!["ar"]!.GetValue<string>(), branding["tagline"].GetProperty("ar").GetString());
+        Assert.Equal(shipped["colors"]!["primary"]!.GetValue<string>(), branding["colors"].GetProperty("primary").GetString());
+        Assert.Equal(shipped["colors"]!["accent"]!.GetValue<string>(), branding["colors"].GetProperty("accent").GetString());
+        Assert.Equal(shipped["supportPhone"]!.GetValue<string>(), branding["supportPhone"].GetString());
 
         using var logo = await client.GetAsync(branding["logoUrl"].GetString());
         Assert.Equal(HttpStatusCode.OK, logo.StatusCode);
