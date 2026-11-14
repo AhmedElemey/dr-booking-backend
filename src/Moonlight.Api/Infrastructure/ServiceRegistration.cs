@@ -14,6 +14,7 @@ using Moonlight.Api.Features.Appointments;
 using Moonlight.Api.Features.Auth;
 using Moonlight.Api.Features.Catalog;
 using Moonlight.Api.Features.Dashboard;
+using Moonlight.Api.Features.Flags;
 using Moonlight.Api.Features.Notifications;
 using Moonlight.Api.Infrastructure.Auth;
 using Moonlight.Api.Infrastructure.Fcm;
@@ -34,6 +35,20 @@ public static class ServiceRegistration
 
         var connectionString = configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
+
+        // Clinic identity and default feature switches (fail fast when the file is missing or invalid).
+        ClinicConfig clinic;
+        try
+        {
+            clinic = ClinicConfigLoader.LoadFile(ClinicConfigLoader.Locate(configuration["ClinicConfig:Path"], environment.ContentRootPath));
+        }
+        catch (ClinicConfigException ex)
+        {
+            throw new InvalidOperationException(ex.Message, ex);
+        }
+
+        services.AddSingleton(clinic);
+        services.AddSingleton<FeatureService>();
 
         // Options
         services.Configure<BookingOptions>(configuration.GetSection(BookingOptions.Section));
@@ -102,6 +117,17 @@ public static class ServiceRegistration
             services.AddHostedService<ReminderBackgroundService>();
         }
 
+        // Runtime feature switches pulled from the super admin console (only when Console:Url/ClinicId/ApiKey are all set).
+        var console = ConsoleSettings.Resolve(configuration, clinic);
+        services.AddSingleton(console);
+        services.AddHttpClient(ConsoleSettings.HttpClientName);
+        services.AddSingleton<IFeatureStateStore, EfFeatureStateStore>();
+        services.AddSingleton<ConsolePuller>();
+        if (console.IsConfigured)
+        {
+            services.AddHostedService<ConsolePullService>();
+        }
+
         // Features
         services.AddScoped<AuthService>();
         services.AddScoped<CatalogService>();
@@ -161,9 +187,9 @@ public static class ServiceRegistration
         {
             options.SwaggerDoc("v1", new OpenApiInfo
             {
-                Title = "Moonlight API",
+                Title = $"{clinic.Name.En} API",
                 Version = "v1",
-                Description = "Dentist reservation platform. Errors are RFC 7807 problem+json with a stable `code`.",
+                Description = $"Dentist reservation platform for {clinic.Name.En}. Errors are RFC 7807 problem+json with a stable `code`.",
             });
             options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"));
             options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme

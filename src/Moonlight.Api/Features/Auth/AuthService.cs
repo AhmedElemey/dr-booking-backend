@@ -16,6 +16,7 @@ public sealed class AuthService(
     MoonlightDbContext db,
     TokenService tokens,
     ISmsSender sms,
+    ClinicConfig clinic,
     TimeProvider clock,
     ILogger<AuthService> logger,
     FixedOtpBypass? fixedOtp = null)
@@ -40,7 +41,7 @@ public sealed class AuthService(
         });
         await db.SaveChangesAsync(ct);
 
-        await sms.SendAsync(phone, $"رمز التحقق الخاص بك في مونلايت: {code} / Your Moonlight code: {code}", ct);
+        await sms.SendAsync(phone, $"رمز التحقق الخاص بك في {clinic.Name.Ar}: {code} / Your {clinic.Name.En} code: {code}", ct);
     }
 
     public async Task<AuthResponse> VerifyOtpAsync(string? phoneInput, string? code, CancellationToken ct)

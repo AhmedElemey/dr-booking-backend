@@ -57,6 +57,9 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "POST /api/v1/admin/clinics/{id}/users",
         "PATCH /api/v1/admin/users/{id}/active",
         "GET /health",
+        "GET /api/v1/features",
+        "GET /api/v1/branding",
+        "GET /api/v1/branding/logo",
     ];
 
     private static readonly string[] Anonymous =
@@ -69,6 +72,9 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "GET /api/v1/doctors",
         "GET /api/v1/doctors/{idOrSlug}",
         "GET /api/v1/doctors/{idOrSlug}/slots",
+        "GET /api/v1/features",
+        "GET /api/v1/branding",
+        "GET /api/v1/branding/logo",
         "GET /health",
     ];
 

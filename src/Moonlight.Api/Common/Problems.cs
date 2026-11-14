@@ -11,7 +11,8 @@ public static class Problems
         HttpContext context,
         string code,
         string? detail = null,
-        IDictionary<string, string[]>? errors = null)
+        IDictionary<string, string[]>? errors = null,
+        IDictionary<string, object?>? extensions = null)
     {
         var lang = Language.FromRequest(context.Request);
         var status = ErrorCodes.StatusOf(code);
@@ -29,6 +30,14 @@ public static class Problems
             body["errors"] = errors;
         }
 
+        if (extensions is not null)
+        {
+            foreach (var (key, value) in extensions)
+            {
+                body[key] = value;
+            }
+        }
+
         context.Response.StatusCode = status;
         await context.Response.WriteAsJsonAsync(body, (System.Text.Json.JsonSerializerOptions?)null, "application/problem+json");
     }
@@ -40,7 +49,7 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) : I
     {
         if (exception is ApiException api)
         {
-            await Problems.WriteAsync(httpContext, api.Code, api.Detail, api.Errors);
+            await Problems.WriteAsync(httpContext, api.Code, api.Detail, api.Errors, api.Extensions);
             return true;
         }
 
@@ -58,4 +67,5 @@ public sealed record ApiProblem(
     string Code,
     string Detail,
     string TraceId,
-    IDictionary<string, string[]>? Errors);
+    IDictionary<string, string[]>? Errors,
+    string? Feature = null);

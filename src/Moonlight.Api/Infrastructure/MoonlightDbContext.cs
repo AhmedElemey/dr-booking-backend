@@ -28,6 +28,8 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
 
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
 
+    public DbSet<FeatureState> FeatureStates => Set<FeatureState>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(e =>
@@ -151,6 +153,13 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.Property(t => t.FcmToken).HasMaxLength(512);
             e.Property(t => t.Platform).HasConversion<string>().HasMaxLength(20);
             e.HasOne<User>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FeatureState>(e =>
+        {
+            e.ToTable("feature_state", t => t.HasCheckConstraint("ck_feature_state_singleton", "id = 1"));
+            e.Property(f => f.Id).ValueGeneratedNever();
+            e.Property(f => f.Features).HasColumnType("jsonb");
         });
     }
 }
