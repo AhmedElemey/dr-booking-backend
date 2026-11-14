@@ -18,7 +18,7 @@ Everything logs in with phone OTP. In Development and Staging the fixed code **`
 
 | Role | Name | Phone | Notes |
 |---|---|---|---|
-| `PlatformAdmin` | Moonlight Admin | `+201000000001` (`01000000001`) | admin endpoints |
+| `PlatformAdmin` | `<clinic name> Admin` (Moonlight Admin by default) | `+201000000001` (`01000000001`) | admin endpoints |
 | `ClinicStaff` | Mona Reception | `+201000000002` | Smile Care Clinic |
 | `Doctor` | Dr. Amr Hassan | `+201000000011` | General Dentistry, slug `dr-amr-hassan` |
 | `Doctor` | Dr. Sara Mahmoud | `+201000000012` | Orthodontics, slug `dr-sara-mahmoud` |
@@ -51,6 +51,35 @@ Environment variables use `__` for nesting (`Jwt__Key`).
 | `Reminders__Enabled` / `IntervalMinutes` | true / 5 | reminder background service |
 | `Storage__Path` | `uploads` | local disk for doctor photos (object storage lands in M6) |
 | `Auth__FixedOtp` | dev: `123456` | development bypass, startup fails if set in Production |
+| `ClinicConfig__Path` | auto | path of `clinic.config.json`; by default found next to the binaries (copied on build/publish), then the repo root |
+| `Console__Url` | `console.url` in `clinic.config.json` | base URL of the super admin console; the runtime pull is off unless Url, ClinicId and ApiKey are all set |
+| `Console__ClinicId` | `console.clinicId` in `clinic.config.json` | this clinic's id in the console |
+| `Console__ApiKey` | empty | sent as `X-Clinic-Key`; keep it a secret, never put it in the config file |
+| `Console__RefreshSeconds` | 300 | how often the console is pulled (at least 1) |
+
+## Clinic config and features
+
+Each clinic's identity lives in one file, [`clinic.config.json`](clinic.config.json) at the repo root (validated by [`clinic.config.schema.json`](clinic.config.schema.json), logo in `branding/`). The API loads it at startup and **refuses to start** with a message listing every problem if it is missing or invalid. It is copied next to the binaries on build and into the Docker image on publish. The same file is used by the website, mobile app and console repos.
+
+It sets the clinic name (Arabic and English), tagline, colours, logo, support phone, app ids and the **default feature switches**. The clinic name replaces "Moonlight" everywhere users see it: the OTP SMS, the Swagger title and the dev admin account name. To rebrand a copy of this repo for a clinic, edit `clinic.config.json` and replace `branding/logo.svg`; no code changes.
+
+Public endpoints (anonymous):
+
+- `GET /api/v1/features` returns `{ features: { ... }, source, updatedAt }`, cacheable for 60 s. `source` is `console` (pulled live), `cache` (last copy of a console pull, used after a restart while the console is unreachable) or `defaults` (`clinic.config.json`).
+- `GET /api/v1/branding` returns `{ slug, name, tagline, colors, supportPhone, logoUrl }`; `GET /api/v1/branding/logo` serves the logo file.
+
+| Feature | When off |
+|---|---|
+| `mobileApp`, `website`, `englishLanguage` | reported to clients only; they hide or replace their UI |
+| `guestBrowsing` | doctor search, profile and slots answer 401 to anonymous callers (specialties and cities stay public) |
+| `patientSelfService` | patient cancel and reschedule answer 403 `FEATURE_DISABLED`; clinic staff can still cancel |
+| `pushReminders` | confirmation and reminder pushes are skipped (a clinic cancellation is still pushed) |
+| `smsNotifications` | when on, patients without a device token (or with pushes off) get SMS, in addition to `Sms__NotificationsEnabled` |
+| `multiBranch` | admin cannot create a second clinic: 403 `FEATURE_DISABLED` (the first is allowed) |
+
+A disabled feature returns `application/problem+json` with `code: "FEATURE_DISABLED"`, `feature: "<key>"` and a title localized by `Accept-Language`.
+
+**Console pull.** When `Console__Url`, `Console__ClinicId` and `Console__ApiKey` are all set, a background service calls `GET {Url}/api/v1/clinics/{clinicId}/runtime-config` (header `X-Clinic-Key`) every `Console__RefreshSeconds` and expects `{ "features": { ... }, "updatedAt": "..." }`. Unknown keys are ignored and missing keys take the `clinic.config.json` default. Each good response is saved in the single-row `feature_state` table, so a restart while the console is down keeps the last switches. A failing console (timeout, error status, bad JSON) is logged and never affects the API: the previous switches stay in force.
 
 ## Test
 
@@ -74,5 +103,5 @@ Use a non-Development environment so the app does not migrate and seed while the
 
 ## Layout
 
-- `src/Moonlight.Api` — the API: `Features/` (Auth, Me, Catalog, Appointments, Dashboard, Admin, Notifications), `Domain/` (entities, `SlotGenerator`, `AppointmentRules`), `Infrastructure/` (DbContext, migrations, JWT, SMS, FCM, storage, dev seed), `Common/` (problem details, paging, rate limiting)
+- `src/Moonlight.Api` — the API: `Features/` (Auth, Me, Catalog, Appointments, Dashboard, Admin, Notifications, Flags for features and the console pull, Branding), `Domain/` (entities, `SlotGenerator`, `AppointmentRules`), `Infrastructure/` (DbContext, migrations, JWT, SMS, FCM, storage, dev seed), `Common/` (problem details, paging, rate limiting, clinic config)
 - `tests/Moonlight.Tests` — unit tests (slot generator, transition rules, phone parsing) and integration tests against Postgres
