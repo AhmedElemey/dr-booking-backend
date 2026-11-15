@@ -170,6 +170,9 @@ public class PaymobWebhookTests(PostgresFixture db) : Phase2TestBase(db, new Dic
 {
     private const string Secret = "integration-hmac-secret";
 
+    // The fake Paymob answers every order with the same id, so each test needs a database of its own.
+    protected override bool IsolatedDatabase => true;
+
     private bool _failing;
 
     private FakeHandler? _handler;
@@ -243,6 +246,35 @@ public class PaymobWebhookTests(PostgresFixture db) : Phase2TestBase(db, new Dic
         var cancelled = await patient.PostAsync($"{Patient(id)}/cancel");
         Assert.Equal("Refunded", cancelled["paymentStatus"].GetString());
         Assert.Contains(_paymob.Calls, c => c.Url.EndsWith("/api/acceptance/void_refund/refund") && c.Body.Contains("8800"));
+    }
+
+    [Fact]
+    public async Task Pending_token_and_mismatching_callbacks_leave_the_payment_untouched()
+    {
+        Enable(FeatureKeys.OnlinePayments);
+        var patient = await World.NewPatientAsync();
+        var id = await BookWithServiceAsync(patient);
+        var paymentId = (await patient.PostAsync($"{Patient(id)}/pay", new { returnUrl = "https://shop.example.test/back" }))["paymentId"].GetGuid();
+        async Task<PaymentStatus> StatusAsync() => (await World.WithDbAsync(d => d.Payments.AsNoTracking().FirstAsync(p => p.Id == paymentId))).Status;
+
+        // a wallet or kiosk payment still in progress: pending=true is neither paid nor failed
+        var pendingTx = TransactionJson(false).Replace("\"pending\":false", "\"pending\":true");
+        Assert.Equal(200, (await PostWebhookAsync(pendingTx, Sign(pendingTx))).StatusCode);
+        Assert.Equal(PaymentStatus.Pending, await StatusAsync());
+
+        // TOKEN callbacks are acknowledged without a transaction signature
+        var token = await World.Anonymous().PostAsync("/api/v1/payments/webhook/paymob", JsonDocument.Parse("""{"type":"TOKEN","obj":{"token":"x"}}""").RootElement);
+        Assert.Equal(200, token.StatusCode);
+        Assert.Equal(PaymentStatus.Pending, await StatusAsync());
+
+        // a validly signed success for another amount is not applied
+        var wrongAmount = TransactionJson(true).Replace("30000", "100");
+        Assert.Equal(200, (await PostWebhookAsync(wrongAmount, Sign(wrongAmount))).StatusCode);
+        Assert.Equal(PaymentStatus.Pending, await StatusAsync());
+
+        var good = TransactionJson(true);
+        await PostWebhookAsync(good, Sign(good));
+        Assert.Equal(PaymentStatus.Paid, await StatusAsync());
     }
 
     [Fact]

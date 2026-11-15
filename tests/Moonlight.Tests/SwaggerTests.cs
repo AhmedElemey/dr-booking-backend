@@ -108,6 +108,8 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "PUT /api/v1/dashboard/records/{id}",
         "DELETE /api/v1/dashboard/records/{id}",
         "PUT /api/v1/dashboard/records/{id}/attachment",
+        "GET /api/v1/dashboard/records/{id}/attachment",
+        "GET /api/v1/me/records/{id}/attachment",
         "GET /api/v1/me/records",
         "POST /api/v1/appointments/{id}/review",
         "GET /api/v1/doctors/{idOrSlug}/reviews",

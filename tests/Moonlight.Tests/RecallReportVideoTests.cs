@@ -95,6 +95,7 @@ public class RecallTests(PostgresFixture db) : Phase2TestBase(db)
         Assert.Contains("Hi Nour, time to visit Dr Test at Clinic", sms.Message);
         Assert.DoesNotContain("{", sms.Message);
 
+        Factory.Clock.Advance(TimeSpan.FromMinutes(6)); // past the send-now cool-down
         var second = await Staff.PostAsync($"/api/v1/dashboard/recall-campaigns/{campaign}/send-now");
         Assert.Equal(0, second["sent"].GetInt32());
         Assert.Single(Factory.Sms.Sent);
@@ -107,6 +108,22 @@ public class RecallTests(PostgresFixture db) : Phase2TestBase(db)
         Factory.Clock.Advance(TimeSpan.FromDays(31));
         // the eligible patient and the one whose future visit has meanwhile passed
         Assert.Equal(2, (await Staff.PostAsync($"/api/v1/dashboard/recall-campaigns/{campaign}/preview"))["audienceCount"].GetInt32());
+    }
+
+    [Fact]
+    public async Task Concurrent_send_now_calls_message_the_audience_once()
+    {
+        Enable(FeatureKeys.RecallCampaigns);
+        var (campaign, _) = await ScenarioAsync();
+
+        var results = await Task.WhenAll(
+            Staff.PostAsync($"/api/v1/dashboard/recall-campaigns/{campaign}/send-now"),
+            Staff.PostAsync($"/api/v1/dashboard/recall-campaigns/{campaign}/send-now"),
+            Staff.PostAsync($"/api/v1/dashboard/recall-campaigns/{campaign}/send-now"));
+
+        Assert.Equal(1, results.Count(r => r.StatusCode == 200));
+        Assert.All(results.Where(r => r.StatusCode != 200), r => Assert.Equal("INVALID_TRANSITION", r.Code));
+        Assert.Single(Factory.Sms.Sent);
     }
 
     [Fact]
@@ -234,11 +251,33 @@ public class ReportTests(PostgresFixture db) : Phase2TestBase(db)
         var paymentOfC = await World.WithDbAsync(x => x.Payments.AsNoTracking().FirstAsync(p => p.AppointmentId == c));
         await Staff.PostAsync($"/api/v1/dashboard/payments/{paymentOfC.Id}/refund");
         var after = (await Staff.GetAsync($"/api/v1/dashboard/reports/revenue?{query}"))["totals"];
-        Assert.Equal(300m, after.GetProperty("collectedEgp").GetDecimal());
+        // A later refund never rewrites what was collected: net = collected - refunds.
+        Assert.Equal(570m, after.GetProperty("collectedEgp").GetDecimal());
         Assert.Equal(270m, after.GetProperty("refundsEgp").GetDecimal());
 
         var filtered = await Staff.GetAsync($"/api/v1/dashboard/reports/bookings?{query}&doctorId={Guid.NewGuid()}");
         Assert.Equal(0, filtered["totals"].GetProperty("booked").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_refund_in_a_later_period_does_not_rewrite_the_period_that_was_paid()
+    {
+        Enable(FeatureKeys.Reports, FeatureKeys.OnlinePayments);
+        var paidDay = Today(Now);
+        var a = await BookAsync(await World.NewPatientAsync(), 10);
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(a)}/mark-paid")).StatusCode);
+        Factory.Clock.Advance(TimeSpan.FromDays(40));
+        var payment = await World.WithDbAsync(x => x.Payments.AsNoTracking().FirstAsync(p => p.AppointmentId == a));
+        Assert.Equal(200, (await Staff.PostAsync($"/api/v1/dashboard/payments/{payment.Id}/refund")).StatusCode);
+        var refundDay = Today(Now);
+
+        var paidPeriod = (await Staff.GetAsync($"/api/v1/dashboard/reports/revenue?from={paidDay:yyyy-MM-dd}&to={paidDay:yyyy-MM-dd}"))["totals"];
+        var refundPeriod = (await Staff.GetAsync($"/api/v1/dashboard/reports/revenue?from={refundDay:yyyy-MM-dd}&to={refundDay:yyyy-MM-dd}"))["totals"];
+
+        Assert.Equal(300m, paidPeriod.GetProperty("collectedEgp").GetDecimal());
+        Assert.Equal(0m, paidPeriod.GetProperty("refundsEgp").GetDecimal());
+        Assert.Equal(0m, refundPeriod.GetProperty("collectedEgp").GetDecimal());
+        Assert.Equal(300m, refundPeriod.GetProperty("refundsEgp").GetDecimal());
     }
 
     [Fact]

@@ -97,6 +97,22 @@ public sealed class ClinicConfigTests : IDisposable
         Assert.Contains("invalid", message);
     }
 
+    [Theory]
+    [InlineData("com.my_clinic.app")]
+    [InlineData("Com.Moonlight.App")]
+    [InlineData("moonlight")]
+    public void An_android_application_id_with_an_underscore_or_bad_shape_is_rejected(string id)
+    {
+        Assert.Contains("mobile.androidApplicationId", LoadError(json => json["mobile"]!["androidApplicationId"] = id));
+
+        var schema = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepoRoot, "clinic.config.schema.json"))).RootElement;
+        var raw = ValidJson();
+        raw["mobile"]!["androidApplicationId"] = id;
+        var errors = new List<string>();
+        MiniSchema.Validate(schema, schema, raw, "$", errors);
+        Assert.NotEmpty(errors);
+    }
+
     [Fact]
     public void Invalid_colours_and_names_are_reported()
     {
