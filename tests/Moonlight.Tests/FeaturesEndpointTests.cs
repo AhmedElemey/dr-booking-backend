@@ -72,7 +72,7 @@ public sealed class FeaturesEndpointTests : IAsyncLifetime
         Assert.Equal("defaults", body["source"].GetString());
         Assert.DoesNotContain(body["updatedAt"].GetString()!, "0001");
         var features = body["features"];
-        Assert.Equal(8, features.EnumerateObject().Count());
+        Assert.Equal(FeatureKeys.All.Count, features.EnumerateObject().Count());
         Assert.True(features.GetProperty("mobileApp").GetBoolean());
         Assert.True(features.GetProperty("guestBrowsing").GetBoolean());
         Assert.False(features.GetProperty("smsNotifications").GetBoolean());
