@@ -289,21 +289,39 @@ public static class DevSeeder
         var past = await PastSlotAsync(db, amr, clinic, zone, today.AddDays(-14), 11, now, ct);
         var completed = new Appointment
         {
-            SlotId = past.Id, PatientUserId = nour.Id, CreatedByUserId = nour.Id, Status = AppointmentStatus.Completed,
+            SlotId = past.Id,
+            PatientUserId = nour.Id,
+            CreatedByUserId = nour.Id,
+            Status = AppointmentStatus.Completed,
             ServiceId = await db.Services.Where(s => s.DoctorId == amr.Id).OrderBy(s => s.DurationMinutes).Select(s => (Guid?)s.Id).FirstAsync(ct),
-            PriceEgp = 300, CompletedAt = past.EndsAt, ReviewPromptSentAt = past.EndsAt, CreatedAt = now.AddDays(-20), UpdatedAt = past.EndsAt,
+            PriceEgp = 300,
+            CompletedAt = past.EndsAt,
+            ReviewPromptSentAt = past.EndsAt,
+            CreatedAt = now.AddDays(-20),
+            UpdatedAt = past.EndsAt,
         };
         db.Appointments.Add(completed);
         db.Reviews.Add(new Review
         {
-            AppointmentId = completed.Id, DoctorId = amr.Id, PatientUserId = nour.Id, Rating = 5,
-            Comment = "Gentle and thorough. Highly recommended.", Reply = "Thank you Nour, see you at the next check-up!", RepliedAt = past.EndsAt.AddDays(1),
+            AppointmentId = completed.Id,
+            DoctorId = amr.Id,
+            PatientUserId = nour.Id,
+            Rating = 5,
+            Comment = "Gentle and thorough. Highly recommended.",
+            Reply = "Thank you Nour, see you at the next check-up!",
+            RepliedAt = past.EndsAt.AddDays(1),
             CreatedAt = past.EndsAt.AddHours(3),
         });
         db.Payments.Add(new Payment
         {
-            AppointmentId = completed.Id, AmountEgp = 300, Status = PaymentStatus.Paid, Method = PaymentMethod.Online, Provider = "mock",
-            ProviderRef = "seed-" + completed.Id.ToString("N"), CreatedAt = now.AddDays(-20), PaidAt = now.AddDays(-20),
+            AppointmentId = completed.Id,
+            AmountEgp = 300,
+            Status = PaymentStatus.Paid,
+            Method = PaymentMethod.Online,
+            Provider = "mock",
+            ProviderRef = "seed-" + completed.Id.ToString("N"),
+            CreatedAt = now.AddDays(-20),
+            PaidAt = now.AddDays(-20),
         });
 
         // upcoming: Omar at the pediatric dentist (insurance claim pending), Nour on a video call with Dr Sara
@@ -314,8 +332,16 @@ public static class DevSeeder
             forOmar.Status = SlotStatus.Reserved;
             db.Appointments.Add(new Appointment
             {
-                SlotId = forOmar.Id, PatientUserId = nour.Id, FamilyMemberId = omar.Id, CreatedByUserId = nour.Id, PriceEgp = 300,
-                InsuranceProviderId = misr.Id, InsuranceMemberNumber = "MI-204518", InsuranceStatus = InsuranceStatus.Pending, CreatedAt = now, UpdatedAt = now,
+                SlotId = forOmar.Id,
+                PatientUserId = nour.Id,
+                FamilyMemberId = omar.Id,
+                CreatedByUserId = nour.Id,
+                PriceEgp = 300,
+                InsuranceProviderId = misr.Id,
+                InsuranceMemberNumber = "MI-204518",
+                InsuranceStatus = InsuranceStatus.Pending,
+                CreatedAt = now,
+                UpdatedAt = now,
             });
         }
 
@@ -324,7 +350,13 @@ public static class DevSeeder
             forVideo.Status = SlotStatus.Reserved;
             db.Appointments.Add(new Appointment
             {
-                SlotId = forVideo.Id, PatientUserId = nour.Id, CreatedByUserId = nour.Id, Mode = AppointmentMode.Video, PriceEgp = 300, CreatedAt = now, UpdatedAt = now,
+                SlotId = forVideo.Id,
+                PatientUserId = nour.Id,
+                CreatedByUserId = nour.Id,
+                Mode = AppointmentMode.Video,
+                PriceEgp = 300,
+                CreatedAt = now,
+                UpdatedAt = now,
             });
         }
 
@@ -332,8 +364,15 @@ public static class DevSeeder
         var lapsed = await PastSlotAsync(db, amr, clinic, zone, today.AddMonths(-8), 12, now, ct);
         db.Appointments.Add(new Appointment
         {
-            SlotId = lapsed.Id, PatientUserId = hala.Id, CreatedByUserId = hala.Id, Status = AppointmentStatus.Completed, PriceEgp = 300,
-            CompletedAt = lapsed.EndsAt, ReviewPromptSentAt = lapsed.EndsAt, CreatedAt = now.AddMonths(-8), UpdatedAt = lapsed.EndsAt,
+            SlotId = lapsed.Id,
+            PatientUserId = hala.Id,
+            CreatedByUserId = hala.Id,
+            Status = AppointmentStatus.Completed,
+            PriceEgp = 300,
+            CompletedAt = lapsed.EndsAt,
+            ReviewPromptSentAt = lapsed.EndsAt,
+            CreatedAt = now.AddMonths(-8),
+            UpdatedAt = lapsed.EndsAt,
         });
         db.RecallCampaigns.Add(new RecallCampaign
         {
@@ -355,28 +394,58 @@ public static class DevSeeder
         db.PatientRecordEntries.AddRange(
             new PatientRecordEntry
             {
-                PatientUserId = nour.Id, AppointmentId = completed.Id, DoctorId = amr.Id, ClinicId = clinic.Id, AuthorUserId = amr.UserId,
-                Kind = RecordKind.Diagnosis, Title = "Mild gingivitis", Body = "Improve flossing; re-check in six months.", VisibleToPatient = true,
-                CreatedAt = past.EndsAt, UpdatedAt = past.EndsAt,
+                PatientUserId = nour.Id,
+                AppointmentId = completed.Id,
+                DoctorId = amr.Id,
+                ClinicId = clinic.Id,
+                AuthorUserId = amr.UserId,
+                Kind = RecordKind.Diagnosis,
+                Title = "Mild gingivitis",
+                Body = "Improve flossing; re-check in six months.",
+                VisibleToPatient = true,
+                CreatedAt = past.EndsAt,
+                UpdatedAt = past.EndsAt,
             },
             new PatientRecordEntry
             {
-                PatientUserId = nour.Id, AppointmentId = completed.Id, DoctorId = amr.Id, ClinicId = clinic.Id, AuthorUserId = amr.UserId,
-                Kind = RecordKind.Note, Title = "Anxious about injections", Body = "Offer topical anaesthetic first.", VisibleToPatient = false,
-                CreatedAt = past.EndsAt, UpdatedAt = past.EndsAt,
+                PatientUserId = nour.Id,
+                AppointmentId = completed.Id,
+                DoctorId = amr.Id,
+                ClinicId = clinic.Id,
+                AuthorUserId = amr.UserId,
+                Kind = RecordKind.Note,
+                Title = "Anxious about injections",
+                Body = "Offer topical anaesthetic first.",
+                VisibleToPatient = false,
+                CreatedAt = past.EndsAt,
+                UpdatedAt = past.EndsAt,
             });
 
         // messages log
         db.OutboundMessages.AddRange(
             new OutboundMessage
             {
-                Channel = MessageChannel.WhatsApp, To = nour.Phone, UserId = nour.Id, ClinicId = clinic.Id, Kind = "appointment.confirmed",
-                Body = "Appointment confirmed: Dr. Youssef Nabil at Smile Care Clinic", Status = MessageStatus.Sent, ProviderRef = "mock-seed", CreatedAt = now,
+                Channel = MessageChannel.WhatsApp,
+                To = nour.Phone,
+                UserId = nour.Id,
+                ClinicId = clinic.Id,
+                Kind = "appointment.confirmed",
+                Body = "Appointment confirmed: Dr. Youssef Nabil at Smile Care Clinic",
+                Status = MessageStatus.Sent,
+                ProviderRef = "mock-seed",
+                CreatedAt = now,
             },
             new OutboundMessage
             {
-                Channel = MessageChannel.Sms, To = hala.Phone, UserId = hala.Id, ClinicId = clinic.Id, Kind = "recall",
-                Body = "Smile Care Clinic: it has been a while since your last visit.", Status = MessageStatus.Failed, Error = "Sample failure", CreatedAt = now,
+                Channel = MessageChannel.Sms,
+                To = hala.Phone,
+                UserId = hala.Id,
+                ClinicId = clinic.Id,
+                Kind = "recall",
+                Body = "Smile Care Clinic: it has been a while since your last visit.",
+                Status = MessageStatus.Failed,
+                Error = "Sample failure",
+                CreatedAt = now,
             });
 
         await db.SaveChangesAsync(ct);

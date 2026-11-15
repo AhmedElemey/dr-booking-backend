@@ -204,3 +204,39 @@ Doctor gains `offersVideo` (dashboard doctor edit; public DTOs expose `offersVid
   modes must cover them.
 - **Console:** 13 features available; descriptions mention provider setup where needed (payments, WhatsApp, video);
   tests updated.
+
+---
+
+## Deviations and notes (backend implementation, 2026-11-15)
+
+The sections above are unchanged. The backend implements them as written; the points below clarify what the contract left open or where the implementation differs. Clients should read this list.
+
+**Added**
+- `GET /api/v1/payments/return` (anonymous): the Paymob *response callback*. Redirects to the `returnUrl` given to `pay` and appends `paymentId` and `status` (`paid`, `pending`, `failed`). Mock checkout redirects the same way.
+- `POST /api/v1/payments/webhook/{provider}` answers `{ "handled": bool }`; 401 `UNAUTHORIZED` for a bad or missing Paymob `hmac` query parameter; 404 when `{provider}` is not the configured provider. Mock webhook body: `{ "providerRef": "<paymentId>", "success": true|false }`.
+- `returnUrl` allow-list: `Payments:ReturnUrlHosts`, the clinic website domain from `clinic.config.json`, and the app schemes (`mobile.androidApplicationId`, `mobile.iosBundleId`). A rejected URL is 400 `VALIDATION_FAILED`.
+- `GET /api/v1/dashboard/holidays/{id}/conflicts` returns dashboard appointment DTOs on that clinic-local date (Confirmed only).
+- `DashboardBookAppointmentDto` (staff booking) also accepts `mode` and `insurance`; coupons and `familyMemberId` are patient-booking only.
+- User DTO (`/auth` responses and `/me`) exposes `whatsAppOptIn` and `marketingOptIn`; `PUT /me` accepts both.
+
+**Clarified status codes and shapes**
+- Duplicate holiday date: 400 `VALIDATION_FAILED` (field `date`), not 409.
+- 11th family member, insurance provider not accepted by the doctor, `mode: Video` for a doctor that does not offer it: 422 `VALIDATION_FAILED` with field errors. Every 422 is a problem+json with `code`.
+- `GET /api/v1/dashboard/patients` returns a plain array (as in the contract; `?page=&pageSize=` are accepted and the total is in the `X-Total-Count` header).
+- `GET /api/v1/dashboard/reviews`, `.../messages`, `.../recall-campaigns/{id}/sends` and `GET /api/v1/doctors/{id}/reviews` return `{ items, page, pageSize, total }`.
+- `GET /api/v1/dashboard/waiting-list` entries: `{ id, doctor, patient, familyMember, date, status, serviceId, notifiedAt, createdAt }`; `POST /api/v1/waiting-list` returns `{ id, doctor, date, serviceId, familyMemberId, status, notifiedAt, createdAt }`.
+- `paymentStatus` on appointments: `Unpaid` when there is no payment or the last attempt Failed, `Pending` while a checkout is open, `Paid`, `Refunded`. `priceEgp` is a snapshot taken at booking (service price, else doctor fee, else 0); `totalEgp = max(0, priceEgp - discountEgp)`.
+- `POST /appointments/{id}/pay` is allowed for Confirmed, future appointments with total > 0 and no Paid/Pending payment; otherwise 409 `PAYMENT_NOT_ALLOWED`. A new attempt after a Failed one creates a new payment.
+- Coupon validation: `valid:false` always carries `reason`; `discountEgp` is capped at the price and at `maxDiscountEgp`. The booking redeems atomically in the booking transaction (`maxRedemptions` cannot be oversold) and cancelling by anyone releases it. `perPatientLimit` counts per account owner, not per family member.
+- Coupon `code` is globally unique, upper-cased on input, 3-20 of `A-Z0-9-`.
+- `GET /api/v1/doctors/{id}/slots` returns `closedDates: []` when `holidayCalendar` is off (the field is always present); the public doctor DTOs always carry `offersVideo`, `insuranceProviders` and `rating` (empty/false/null while the feature is off).
+- Reviews: `patientFirstName` is the first word of the patient name (null when unnamed). `canReview` is true for the caller's own Completed, not yet reviewed appointment.
+- Review prompt: sent once, `Jobs:ReviewPromptDelayMinutes` (default 30) after the appointment is marked Completed; the claim is an atomic update of `reviewPromptSentAt`.
+- Waiting list: all `Waiting` entries of that doctor and clinic-local date are notified in FIFO order when a slot opens (cancel, unblock, new slot, bulk or template creation, reschedule away); notified entries are not notified again. Past dates expire on the background tick, not only nightly.
+- Recall: audience excludes patients with `marketingOptIn = false`, a future Confirmed appointment, a recall send for the same campaign in the last 30 days, and a last visit (Completed, at that clinic, matching doctor/service when set) newer than `monthsSinceLastVisit` months. Channel `Auto` prefers WhatsApp (when on and opted in), then push, then SMS (when SMS notifications are on); otherwise the send is recorded `Skipped`. Recurring campaigns are claimed atomically once per clinic-local day after `Jobs:RecallHour`.
+- Records: `PUT /dashboard/records/{id}/attachment` is multipart (`file`), pdf/jpg/png up to 10 MB, content sniffed. Only the author, clinic staff and platform admin may edit or delete an entry. A doctor sees patients who have an appointment with them; staff see patients of their clinic.
+- Reports: rows are bucketed by the appointment's clinic-local slot date; `collectedEgp` uses the payment's `paidAt`, `refundsEgp` its `refundedAt`. `cancellationRate` is cancelled / booked rounded to 4 decimals. CSV: `period,booked,completed,cancelled,noShow` (bookings) and `period,expectedEgp,collectedEgp` (revenue), each followed by a `total` row.
+- Video: the room is created on the first successful join and stored on the appointment; the patient and host URLs share the room. `GET .../video` on an in-person appointment is 404.
+- WhatsApp: template kinds `confirmed`, `cancelled`, `reminder`, `waitlist`, `review`, `recall` map to `WhatsApp:Templates:<kind>`; body parameters are the patient name, the doctor name and the date/time (kind specific). WhatsApp is sent in addition to (not instead of) push/SMS for confirmations, reminders, clinic cancellations, waiting-list and review prompts; recall uses a single channel per patient.
+- Egyptian holiday data: fixed-date holidays are computed for any year; moveable ones are a bundled table for 2026-2028 and are **estimates**. For other years only the fixed ones are imported.
+- Working-hours template `rules[].dayOfWeek` is the .NET name (`"Monday"` ... `"Sunday"`); `start`/`end` are `HH:mm` on 15-minute boundaries, `slotMinutes` a multiple of 15.

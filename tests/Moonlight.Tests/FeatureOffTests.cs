@@ -11,7 +11,7 @@ public class FeatureOffTests(PostgresFixture db) : Phase2TestBase(db)
 
     public static IEnumerable<object[]> Endpoints()
     {
-        object[] E(string feature, string method, string url, Who who) => [feature, method, url, who];
+        static object[] E(string feature, string method, string url, Who who) => [feature, method, url, who];
 
         // holidayCalendar
         yield return E(FeatureKeys.HolidayCalendar, "GET", $"/api/v1/clinics/{Id}/holidays", Who.Anonymous);
