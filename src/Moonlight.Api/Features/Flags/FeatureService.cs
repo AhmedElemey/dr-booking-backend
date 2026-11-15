@@ -12,6 +12,19 @@ public static class FeatureKeys
     public const string SmsNotifications = "smsNotifications";
     public const string EnglishLanguage = "englishLanguage";
     public const string MultiBranch = "multiBranch";
+    public const string VideoConsultation = "videoConsultation";
+    public const string WaitingList = "waitingList";
+    public const string FamilyAccounts = "familyAccounts";
+    public const string WhatsappReminders = "whatsappReminders";
+    public const string OnlinePayments = "onlinePayments";
+    public const string Insurance = "insurance";
+    public const string HolidayCalendar = "holidayCalendar";
+    public const string WorkingHoursTemplates = "workingHoursTemplates";
+    public const string PatientRecords = "patientRecords";
+    public const string Reviews = "reviews";
+    public const string Promotions = "promotions";
+    public const string RecallCampaigns = "recallCampaigns";
+    public const string Reports = "reports";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -23,6 +36,19 @@ public static class FeatureKeys
         SmsNotifications,
         EnglishLanguage,
         MultiBranch,
+        VideoConsultation,
+        WaitingList,
+        FamilyAccounts,
+        WhatsappReminders,
+        OnlinePayments,
+        Insurance,
+        HolidayCalendar,
+        WorkingHoursTemplates,
+        PatientRecords,
+        Reviews,
+        Promotions,
+        RecallCampaigns,
+        Reports,
     ];
 }
 
