@@ -28,7 +28,8 @@ public sealed class HolidayService(
     DashboardScope scope,
     AppointmentMapper mapper,
     Language lang,
-    FeatureService features)
+    FeatureService features,
+    TimeProvider clock)
 {
     public const int MaxRangeDays = 366;
 
@@ -49,12 +50,10 @@ public sealed class HolidayService(
 
     public async Task<List<PublicHolidayDto>> PublicListAsync(Guid clinicId, DateOnly? from, DateOnly? to, CancellationToken ct)
     {
-        if (!await db.Clinics.AnyAsync(c => c.Id == clinicId && c.IsActive, ct))
-        {
-            throw ApiException.NotFound();
-        }
+        var timezone = await db.Clinics.AsNoTracking().Where(c => c.Id == clinicId && c.IsActive).Select(c => c.Timezone).FirstOrDefaultAsync(ct)
+            ?? throw ApiException.NotFound();
 
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var fromDate = from ?? ClinicTime.LocalDate(clock.GetUtcNow().UtcDateTime, ClinicTime.FindZone(timezone));
         var toDate = to ?? fromDate.AddDays(MaxRangeDays - 1);
         RequireRange(fromDate, toDate);
         var holidays = await ClosedAsync(clinicId, fromDate, toDate, ct);
@@ -64,7 +63,8 @@ public sealed class HolidayService(
     public async Task<List<HolidayDto>> ListAsync(Guid? clinicId, int? year, CancellationToken ct)
     {
         var id = ResolveClinic(clinicId);
-        var y = year ?? DateTime.UtcNow.Year;
+        var timezone = await db.Clinics.AsNoTracking().Where(c => c.Id == id).Select(c => c.Timezone).FirstOrDefaultAsync(ct) ?? Clinic.DefaultTimezone;
+        var y = year ?? ClinicTime.LocalDate(clock.GetUtcNow().UtcDateTime, ClinicTime.FindZone(timezone)).Year;
         var rows = await db.ClinicHolidays.AsNoTracking()
             .Where(h => h.ClinicId == id && h.Date >= new DateOnly(y, 1, 1) && h.Date <= new DateOnly(y, 12, 31))
             .OrderBy(h => h.Date).ToListAsync(ct);

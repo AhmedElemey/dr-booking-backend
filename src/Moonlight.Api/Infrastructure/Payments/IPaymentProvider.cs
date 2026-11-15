@@ -14,7 +14,7 @@ public enum WebhookKind
 }
 
 // ProviderRef is the provider order reference (equal to Payment.ProviderRef); TransactionId is needed later to refund.
-public sealed record WebhookEvent(WebhookKind Kind, string ProviderRef, string? TransactionId, bool Succeeded, string Raw);
+public sealed record WebhookEvent(WebhookKind Kind, string ProviderRef, string? TransactionId, bool Succeeded, string Raw, long? AmountCents = null, string? Currency = null);
 
 public sealed record WebhookRequest(string Body, IReadOnlyDictionary<string, string> Query);
 

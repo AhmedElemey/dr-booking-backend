@@ -16,14 +16,21 @@ public interface IWhatsAppSender
     Task<WhatsAppResult> SendAsync(string phone, string templateName, string language, IReadOnlyList<string> parameters, CancellationToken ct = default);
 }
 
-// Development stub: the message is only logged (the notification service also writes it to the outbox).
+// Development / staging-demo stub: nothing is delivered. Only a masked number and the template name are logged, never the content.
 public sealed class MockWhatsAppSender(ILogger<MockWhatsAppSender> logger) : IWhatsAppSender
 {
     public Task<WhatsAppResult> SendAsync(string phone, string templateName, string language, IReadOnlyList<string> parameters, CancellationToken ct = default)
     {
-        logger.LogInformation("WhatsApp (mock) to {Phone}: template {Template} [{Language}] ({Parameters})", phone, templateName, language, string.Join(" | ", parameters));
+        logger.LogInformation("WhatsApp (mock) to {Phone}: template {Template} [{Language}]", PhoneNumber.Mask(phone), templateName, language);
         return Task.FromResult(new WhatsAppResult("mock-" + Guid.NewGuid().ToString("N")));
     }
+}
+
+// Used when no real provider is configured (Mock outside Development without WhatsApp:AllowMock): every send fails, so the outbox shows Failed.
+public sealed class UnconfiguredWhatsAppSender : IWhatsAppSender
+{
+    public Task<WhatsAppResult> SendAsync(string phone, string templateName, string language, IReadOnlyList<string> parameters, CancellationToken ct = default) =>
+        throw new InvalidOperationException("not configured");
 }
 
 // WhatsApp Business Cloud API: POST {ApiBaseUrl}/{PhoneNumberId}/messages with a template message.

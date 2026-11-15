@@ -29,7 +29,8 @@ public sealed class AppointmentService(
     CouponService coupons,
     PaymentService payments,
     TimeProvider clock,
-    IOptions<BookingOptions> bookingOptions)
+    IOptions<BookingOptions> bookingOptions,
+    ILogger<AppointmentService> logger)
 {
     private const string ActiveSlotIndex = "ux_appointments_active_slot";
 
@@ -339,10 +340,25 @@ public sealed class AppointmentService(
         appointment.CancelReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         appointment.UpdatedAt = Now;
         slot.Status = SlotStatus.Open;
-        await SaveTransitionAsync(ct);
-        await coupons.ReleaseAsync(appointment.Id, ct);
+
+        // The status change and the coupon release commit together; the side effects after it are independent of each other
+        // (a failing one is logged and never turns a done cancellation into an error or skips the others).
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await SaveTransitionAsync(ct);
+            await coupons.ReleaseAsync(appointment.Id, ct);
+            await tx.CommitAsync(ct);
+        }
+
         await payments.RefundOnCancelAsync(appointment.Id, ct);
-        await waitingList.NotifySlotsOpenedAsync(slot.DoctorId, [slot.StartsAt], ct);
+        try
+        {
+            await waitingList.NotifySlotsOpenedAsync(slot.DoctorId, [slot.StartsAt], ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Waiting-list notification after cancelling appointment {AppointmentId} failed.", appointment.Id);
+        }
     }
 
     // Optimistic concurrency (xmin): of two simultaneous transitions on one appointment, the loser gets INVALID_TRANSITION.
@@ -459,7 +475,7 @@ public sealed class AppointmentService(
         Guid? familyMemberId = null;
         if (features.IsEnabled(FeatureKeys.FamilyAccounts) && request.FamilyMemberId is { } memberId)
         {
-            if (!await db.FamilyMembers.AnyAsync(f => f.Id == memberId && f.OwnerUserId == patientId, ct))
+            if (!await db.FamilyMembers.AnyAsync(f => f.Id == memberId && f.OwnerUserId == patientId && f.DeletedAt == null, ct))
             {
                 throw ApiException.Validation("familyMemberId", "The family member does not exist.");
             }

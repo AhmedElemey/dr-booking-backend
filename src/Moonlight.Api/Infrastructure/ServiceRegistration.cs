@@ -128,9 +128,10 @@ public static class ServiceRegistration
             services.AddSingleton<IPushSender>(sp => new FcmPushSender(fcmJson, sp.GetRequiredService<ILogger<FcmPushSender>>()));
         }
 
-        AddPhase2Providers(services, configuration);
+        AddPhase2Providers(services, configuration, environment);
 
         services.AddSingleton<IPhotoStorage, LocalDiskPhotoStorage>();
+        services.AddSingleton<IRecordFileStorage, LocalDiskRecordFileStorage>();
         services.AddScoped<MessageDispatcher>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ReminderProcessor>();
@@ -139,6 +140,11 @@ public static class ServiceRegistration
         if (configuration.GetValue("Reminders:Enabled", true))
         {
             services.AddHostedService<ReminderBackgroundService>();
+        }
+
+        if (configuration.GetValue("Jobs:Enabled", true))
+        {
+            services.AddHostedService<MaintenanceBackgroundService>();
         }
 
         // Runtime feature switches pulled from the super admin console (only when Console:Url/ClinicId/ApiKey are all set).
@@ -216,7 +222,7 @@ public static class ServiceRegistration
         // CORS
         var corsOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
         services.AddCors(options => options.AddDefaultPolicy(policy =>
-            policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+            policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithExposedHeaders("X-Total-Count")));
 
         // OpenAPI
         services.AddEndpointsApiExplorer();
@@ -241,13 +247,22 @@ public static class ServiceRegistration
     }
 
     // Payment, WhatsApp and video providers are chosen by configuration (Payments:Provider, WhatsApp:Provider, Video:Provider).
-    private static void AddPhase2Providers(IServiceCollection services, IConfiguration configuration)
+    private static void AddPhase2Providers(IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         var payments = configuration.GetSection(PaymentsOptions.Section).Get<PaymentsOptions>() ?? new PaymentsOptions();
         switch (payments.Provider.ToLowerInvariant())
         {
             case "mock":
-                services.AddScoped<IPaymentProvider, MockPaymentProvider>();
+                if (environment.IsDevelopment() || payments.AllowMock)
+                {
+                    services.AddScoped<IPaymentProvider, MockPaymentProvider>();
+                }
+                else
+                {
+                    // Starts anyway: payments answer PAYMENT_NOT_ALLOWED and the mock endpoints answer 404.
+                    services.AddSingleton<IPaymentProvider, UnconfiguredPaymentProvider>();
+                }
+
                 break;
             case "paymob":
                 var paymob = payments.Paymob;
@@ -273,7 +288,15 @@ public static class ServiceRegistration
         switch (whatsApp.Provider.ToLowerInvariant())
         {
             case "mock":
-                services.AddSingleton<IWhatsAppSender, MockWhatsAppSender>();
+                if (environment.IsDevelopment() || whatsApp.AllowMock)
+                {
+                    services.AddSingleton<IWhatsAppSender, MockWhatsAppSender>();
+                }
+                else
+                {
+                    services.AddSingleton<IWhatsAppSender, UnconfiguredWhatsAppSender>();
+                }
+
                 break;
             case "meta":
                 if (string.IsNullOrWhiteSpace(whatsApp.PhoneNumberId) || string.IsNullOrWhiteSpace(whatsApp.AccessToken))

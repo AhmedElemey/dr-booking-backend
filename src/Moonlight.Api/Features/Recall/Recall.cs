@@ -62,6 +62,7 @@ public sealed class RecallService(
 {
     public const int RepeatWindowDays = 30;
     public const int MaxAudience = 5000;
+    public const int SendNowCooldownMinutes = 5;
 
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
 
@@ -119,6 +120,17 @@ public sealed class RecallService(
         if (!campaign.IsActive)
         {
             throw new ApiException(ErrorCodes.InvalidTransition, "The campaign is switched off.");
+        }
+
+        // Atomic claim: a double click, a client retry or a second staff member cannot start the same campaign again within a few minutes.
+        var now = Now;
+        var threshold = now.AddMinutes(-SendNowCooldownMinutes);
+        var claimed = await db.RecallCampaigns
+            .Where(c => c.Id == id && (c.LastRunAt == null || c.LastRunAt < threshold))
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.LastRunAt, now), ct);
+        if (claimed == 0)
+        {
+            throw new ApiException(ErrorCodes.InvalidTransition, "This campaign was just sent. Wait a few minutes before sending it again.");
         }
 
         return await RunAsync(campaign, ct);
@@ -226,10 +238,11 @@ public sealed class RecallService(
                 },
                 SentAt = Now,
             });
+            // Recorded per patient, right after the message, so an interrupted run still honours the 30-day rule.
+            await db.SaveChangesAsync(ct);
         }
 
         var now = Now;
-        await db.SaveChangesAsync(ct);
         await db.RecallCampaigns.Where(c => c.Id == campaign.Id).ExecuteUpdateAsync(u => u.SetProperty(c => c.LastRunAt, now), ct);
         return new RecallRunResultDto(sent, failed, skipped);
     }

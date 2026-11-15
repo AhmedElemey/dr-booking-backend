@@ -22,7 +22,7 @@ public sealed class FamilyService(MoonlightDbContext db, CurrentUser current, Ti
     public async Task<List<FamilyMemberDto>> ListAsync(CancellationToken ct)
     {
         var owner = current.Id;
-        var rows = await db.FamilyMembers.AsNoTracking().Where(f => f.OwnerUserId == owner).OrderBy(f => f.CreatedAt).ThenBy(f => f.Id).ToListAsync(ct);
+        var rows = await db.FamilyMembers.AsNoTracking().Where(f => f.OwnerUserId == owner && f.DeletedAt == null).OrderBy(f => f.CreatedAt).ThenBy(f => f.Id).ToListAsync(ct);
         return rows.Select(ToDto).ToList();
     }
 
@@ -30,7 +30,7 @@ public sealed class FamilyService(MoonlightDbContext db, CurrentUser current, Ti
     {
         Validate(request);
         var owner = current.Id;
-        if (await db.FamilyMembers.CountAsync(f => f.OwnerUserId == owner, ct) >= FamilyMember.MaxPerOwner)
+        if (await db.FamilyMembers.CountAsync(f => f.OwnerUserId == owner && f.DeletedAt == null, ct) >= FamilyMember.MaxPerOwner)
         {
             throw ApiException.Unprocessable("fullName", $"You can add at most {FamilyMember.MaxPerOwner} family members.");
         }
@@ -46,20 +46,26 @@ public sealed class FamilyService(MoonlightDbContext db, CurrentUser current, Ti
     {
         Validate(request);
         var owner = current.Id;
-        var member = await db.FamilyMembers.FirstOrDefaultAsync(f => f.Id == id && f.OwnerUserId == owner, ct) ?? throw ApiException.NotFound();
+        var member = await db.FamilyMembers.FirstOrDefaultAsync(f => f.Id == id && f.OwnerUserId == owner && f.DeletedAt == null, ct) ?? throw ApiException.NotFound();
         Apply(member, request);
         await db.SaveChangesAsync(ct);
         return ToDto(member);
     }
 
+    // Soft delete: the clinic's records and the appointments keep pointing at the member; only the patient's own lists and booking forget them.
     public async Task DeleteAsync(Guid id, CancellationToken ct)
     {
         var owner = current.Id;
-        var deleted = await db.FamilyMembers.Where(f => f.Id == id && f.OwnerUserId == owner).ExecuteDeleteAsync(ct);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var deleted = await db.FamilyMembers.Where(f => f.Id == id && f.OwnerUserId == owner && f.DeletedAt == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(f => f.DeletedAt, now), ct);
         if (deleted == 0)
         {
             throw ApiException.NotFound();
         }
+
+        await db.WaitingListEntries.Where(w => w.FamilyMemberId == id && (w.Status == WaitingListStatus.Waiting || w.Status == WaitingListStatus.Notified))
+            .ExecuteUpdateAsync(u => u.SetProperty(w => w.Status, WaitingListStatus.Cancelled), ct);
     }
 
     private void Validate(FamilyMemberInputDto request) =>
@@ -112,7 +118,7 @@ public class FamilyController(FamilyService family) : ControllerBase
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
     public Task<FamilyMemberDto> Update(Guid id, FamilyMemberInputDto request, CancellationToken ct) => family.UpdateAsync(id, request, ct);
 
-    /// <summary>Remove a family member. Their past appointments stay on the owner's account.</summary>
+    /// <summary>Remove a family member from the account (a soft delete: clinic records and appointments keep pointing at them; they disappear from the list and from booking).</summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]

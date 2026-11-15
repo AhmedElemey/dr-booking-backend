@@ -45,7 +45,7 @@
       "additionalProperties": false,
       "required": ["androidApplicationId", "iosBundleId"],
       "properties": {
-        "androidApplicationId": { "type": "string", "minLength": 1 },
+        "androidApplicationId": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)+$" },
         "iosBundleId": { "type": "string", "minLength": 1 }
       }
     },

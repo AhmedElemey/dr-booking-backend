@@ -106,7 +106,7 @@ public sealed partial class CouponService(
 
     public async Task<List<PromotionDto>> PublicOffersAsync(CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(Now);
+        var today = ClinicTime.LocalDate(Now, ClinicTime.FindZone(Clinic.DefaultTimezone));
         var rows = await db.Coupons.AsNoTracking()
             .Where(c => c.IsPublic && c.IsActive && c.ValidFrom <= today && c.ValidTo >= today && (c.MaxRedemptions == null || c.RedemptionsCount < c.MaxRedemptions))
             .OrderBy(c => c.ValidTo).ThenBy(c => c.Code).ToListAsync(ct);
@@ -205,6 +205,13 @@ public sealed partial class CouponService(
         if (updated == 0)
         {
             throw Invalid(CouponReasons.Exhausted);
+        }
+
+        // Re-count under the caller's patient lock: the check made while pricing the booking ran before the lock.
+        var used = await db.CouponRedemptions.CountAsync(r => r.CouponId == coupon.Id && r.PatientUserId == patientUserId, ct);
+        if (used >= coupon.PerPatientLimit)
+        {
+            throw Invalid(CouponReasons.PerPatientLimit);
         }
 
         db.CouponRedemptions.Add(new CouponRedemption

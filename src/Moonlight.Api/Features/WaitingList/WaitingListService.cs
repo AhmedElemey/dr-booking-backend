@@ -13,7 +13,7 @@ namespace Moonlight.Api.Features.WaitingList;
 
 public sealed record JoinWaitingListDto(Guid? DoctorId, DateOnly? Date, Guid? ServiceId, Guid? FamilyMemberId);
 
-public sealed record WaitingListEntryDto(Guid Id, DoctorRefDto Doctor, DateOnly Date, WaitingListStatus Status, DateTime? NotifiedAt);
+public sealed record WaitingListEntryDto(Guid Id, DoctorRefDto Doctor, DateOnly Date, WaitingListStatus Status, DateTime? NotifiedAt, FamilyMemberRefDto? FamilyMember);
 
 public sealed record JoinedWaitingListDto(
     Guid Id,
@@ -77,7 +77,7 @@ public sealed class WaitingListService(
 
         var userId = current.Id;
         var familyMemberId = features.IsEnabled(FeatureKeys.FamilyAccounts) ? request.FamilyMemberId : null;
-        if (familyMemberId is { } memberId && !await db.FamilyMembers.AnyAsync(f => f.Id == memberId && f.OwnerUserId == userId, ct))
+        if (familyMemberId is { } memberId && !await db.FamilyMembers.AnyAsync(f => f.Id == memberId && f.OwnerUserId == userId && f.DeletedAt == null, ct))
         {
             throw ApiException.Validation("familyMemberId", "The family member does not exist.");
         }
@@ -116,12 +116,20 @@ public sealed class WaitingListService(
     public async Task<List<WaitingListEntryDto>> MineAsync(CancellationToken ct)
     {
         var userId = current.Id;
-        var since = DateOnly.FromDateTime(Now.AddDays(-30));
+        var since = ClinicTime.LocalDate(Now.AddDays(-30), ClinicTime.FindZone(Clinic.DefaultTimezone));
         var rows = await db.WaitingListEntries.AsNoTracking().Include(w => w.Doctor)
             .Where(w => w.PatientUserId == userId && (w.Status == WaitingListStatus.Waiting || w.Status == WaitingListStatus.Notified || w.Date >= since))
             .OrderByDescending(w => w.Date).ThenBy(w => w.CreatedAt).ThenBy(w => w.Id)
             .ToListAsync(ct);
-        return rows.Select(w => new WaitingListEntryDto(w.Id, DoctorRef(w.Doctor!), w.Date, w.Status, w.NotifiedAt)).ToList();
+        var memberIds = rows.Where(w => w.FamilyMemberId != null).Select(w => w.FamilyMemberId!.Value).Distinct().ToList();
+        var members = await db.FamilyMembers.AsNoTracking().Where(f => memberIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
+        return rows.Select(w => new WaitingListEntryDto(
+            w.Id,
+            DoctorRef(w.Doctor!),
+            w.Date,
+            w.Status,
+            w.NotifiedAt,
+            w.FamilyMemberId is { } m && members.TryGetValue(m, out var member) ? new FamilyMemberRefDto(member.Id, member.FullName, member.Relation) : null)).ToList();
     }
 
     public async Task CancelAsync(Guid id, CancellationToken ct)

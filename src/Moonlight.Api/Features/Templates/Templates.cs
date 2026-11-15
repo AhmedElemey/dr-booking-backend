@@ -137,7 +137,7 @@ public sealed class TemplateService(MoonlightDbContext db, DashboardScope scope)
 
 [ApiController]
 [Route("api/v1/dashboard/working-hours-templates")]
-[Authorize(Roles = Roles.ClinicStaff)]
+[Authorize(Roles = Roles.Dashboard)]
 [RequireFeature(FeatureKeys.WorkingHoursTemplates)]
 [Produces(MediaTypeNames.Application.Json)]
 [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status401Unauthorized)]
@@ -146,12 +146,12 @@ public class WorkingHoursTemplatesController(TemplateService templates) : Contro
 {
     /// <summary>Working-hours templates of the clinic.</summary>
     [HttpGet]
-    [Authorize(Roles = Roles.Dashboard)]
     [ProducesResponseType(typeof(List<WorkingHoursTemplateDto>), StatusCodes.Status200OK)]
     public Task<List<WorkingHoursTemplateDto>> List(CancellationToken ct) => templates.ListAsync(ct);
 
     /// <summary>Create a weekly template: a slot length and rules <c>{dayOfWeek, start "HH:mm", end "HH:mm"}</c>.</summary>
     [HttpPost]
+    [Authorize(Roles = Roles.ClinicStaff)]
     [ProducesResponseType(typeof(WorkingHoursTemplateDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(TemplateInputDto request, CancellationToken ct)
@@ -162,6 +162,7 @@ public class WorkingHoursTemplatesController(TemplateService templates) : Contro
 
     /// <summary>Replace a template.</summary>
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = Roles.ClinicStaff)]
     [ProducesResponseType(typeof(WorkingHoursTemplateDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
@@ -169,6 +170,7 @@ public class WorkingHoursTemplatesController(TemplateService templates) : Contro
 
     /// <summary>Delete a template (slots already created from it stay).</summary>
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = Roles.ClinicStaff)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

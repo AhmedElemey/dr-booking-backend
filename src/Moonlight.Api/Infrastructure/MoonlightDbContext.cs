@@ -171,7 +171,7 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.HasIndex(a => a.CompletedAt)
                 .HasFilter("status = 'Completed' AND review_prompt_sent_at IS NULL")
                 .HasDatabaseName("ix_appointments_review_prompt_due");
-            e.HasOne(a => a.FamilyMember).WithMany().HasForeignKey(a => a.FamilyMemberId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(a => a.FamilyMember).WithMany().HasForeignKey(a => a.FamilyMemberId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(a => a.InsuranceProvider).WithMany().HasForeignKey(a => a.InsuranceProviderId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(a => a.Payments).WithOne(p => p.Appointment).HasForeignKey(p => p.AppointmentId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(a => a.Review).WithOne().HasForeignKey<Review>(r => r.AppointmentId).OnDelete(DeleteBehavior.Cascade);
@@ -256,7 +256,9 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.Property(p => p.ProviderRef).HasMaxLength(200);
             e.Property(p => p.ProviderTransactionId).HasMaxLength(200);
             e.Property(p => p.ReturnUrl).HasMaxLength(500);
-            e.HasIndex(p => p.AppointmentId);
+            e.HasIndex(p => p.AppointmentId, "ix_payments_appointment_id").HasDatabaseName("ix_payments_appointment_id");
+            // One live checkout per appointment.
+            e.HasIndex(p => p.AppointmentId, "ux_payments_live_checkout").IsUnique().HasFilter("status = 'Pending'").HasDatabaseName("ux_payments_live_checkout");
             e.HasIndex(p => new { p.Provider, p.ProviderRef });
             e.HasIndex(p => p.CreatedAt);
         });
@@ -283,7 +285,7 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.HasIndex(m => m.PatientUserId).IsUnique().HasFilter("family_member_id IS NULL").HasDatabaseName("ux_medical_info_self");
             e.HasIndex(m => new { m.PatientUserId, m.FamilyMemberId }).IsUnique().HasFilter("family_member_id IS NOT NULL").HasDatabaseName("ux_medical_info_member");
             e.HasOne<User>().WithMany().HasForeignKey(m => m.PatientUserId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne<FamilyMember>().WithMany().HasForeignKey(m => m.FamilyMemberId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FamilyMember>().WithMany().HasForeignKey(m => m.FamilyMemberId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PatientRecordEntry>(e =>
@@ -291,11 +293,12 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(20);
             e.Property(r => r.Title).HasMaxLength(200);
             e.Property(r => r.Body).HasMaxLength(8000);
-            e.Property(r => r.AttachmentUrl).HasMaxLength(500);
+            e.Property(r => r.AttachmentFile).HasMaxLength(200);
+            e.Property(r => r.AttachmentContentType).HasMaxLength(100);
             e.HasIndex(r => new { r.PatientUserId, r.ClinicId });
             e.HasOne<User>().WithMany().HasForeignKey(r => r.PatientUserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<User>().WithMany().HasForeignKey(r => r.AuthorUserId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne<FamilyMember>().WithMany().HasForeignKey(r => r.FamilyMemberId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FamilyMember>().WithMany().HasForeignKey(r => r.FamilyMemberId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<Appointment>().WithMany().HasForeignKey(r => r.AppointmentId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne<Doctor>().WithMany().HasForeignKey(r => r.DoctorId).OnDelete(DeleteBehavior.SetNull);
         });

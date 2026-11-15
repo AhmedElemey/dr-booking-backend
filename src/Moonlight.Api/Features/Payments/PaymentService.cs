@@ -48,12 +48,19 @@ public sealed class PaymentService(
 {
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
 
+    private const string LiveCheckoutIndex = "ux_payments_live_checkout";
+
     public string ProviderName => provider.Name;
 
     // ---- Patient ------------------------------------------------------------------------------------------------
 
     public async Task<PayResultDto> PayAsync(Guid appointmentId, PayRequestDto request, CancellationToken ct)
     {
+        if (provider is UnconfiguredPaymentProvider)
+        {
+            throw new ApiException(ErrorCodes.PaymentNotAllowed, "Online payments are not configured.");
+        }
+
         new ValidationErrors().RequireText(request.ReturnUrl, "returnUrl", 500).ThrowIfAny();
         var returnUrl = request.ReturnUrl!.Trim();
         if (!IsAllowedReturnUrl(returnUrl))
@@ -62,35 +69,52 @@ public sealed class PaymentService(
         }
 
         var userId = current.Id;
-        var appointment = await AppointmentMapper.WithDetails(db.Appointments)
-            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.PatientUserId == userId, ct) ?? throw ApiException.NotFound();
-        var total = TotalOf(appointment);
-        var payable = appointment.Status == AppointmentStatus.Confirmed
-            && appointment.Slot!.StartsAt > Now
-            && total > 0
-            && !appointment.Payments.Any(p => p.Status == PaymentStatus.Paid);
-        if (!payable)
+        Payment payment;
+        Appointment appointment;
+        // One live checkout per appointment: the appointment's payment lock serializes concurrent pay calls
+        // (a partial unique index on Pending payments is the backstop).
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
-            throw new ApiException(ErrorCodes.PaymentNotAllowed);
-        }
+            await LockAppointmentAsync(appointmentId, ct);
+            appointment = await AppointmentMapper.WithDetails(db.Appointments)
+                .FirstOrDefaultAsync(a => a.Id == appointmentId && a.PatientUserId == userId, ct) ?? throw ApiException.NotFound();
+            var total = TotalOf(appointment);
+            var payable = appointment.Status == AppointmentStatus.Confirmed
+                && appointment.Slot!.StartsAt > Now
+                && total > 0
+                && !appointment.Payments.Any(p => p.Status is PaymentStatus.Paid or PaymentStatus.Refunding);
+            if (!payable)
+            {
+                throw new ApiException(ErrorCodes.PaymentNotAllowed);
+            }
 
-        // An abandoned checkout is replaced by a fresh one.
-        foreach (var stale in appointment.Payments.Where(p => p.Status == PaymentStatus.Pending))
-        {
-            stale.Status = PaymentStatus.Cancelled;
-        }
+            // An abandoned checkout is replaced by a fresh one. (If the old one is still paid later, the webhook refunds it.)
+            foreach (var stale in appointment.Payments.Where(p => p.Status == PaymentStatus.Pending))
+            {
+                stale.Status = PaymentStatus.Cancelled;
+            }
 
-        var payment = new Payment
-        {
-            AppointmentId = appointment.Id,
-            AmountEgp = total,
-            Method = PaymentMethod.Online,
-            Provider = provider.Name,
-            ReturnUrl = returnUrl,
-            CreatedAt = Now,
-        };
-        db.Payments.Add(payment);
-        await db.SaveChangesAsync(ct);
+            payment = new Payment
+            {
+                AppointmentId = appointment.Id,
+                AmountEgp = total,
+                Method = PaymentMethod.Online,
+                Provider = provider.Name,
+                ReturnUrl = returnUrl,
+                CreatedAt = Now,
+            };
+            db.Payments.Add(payment);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (ex.IsUniqueViolation(LiveCheckoutIndex))
+            {
+                throw new ApiException(ErrorCodes.PaymentNotAllowed);
+            }
+
+            await tx.CommitAsync(ct);
+        }
 
         var customer = new PaymentCustomer(appointment.FamilyMember?.FullName ?? appointment.Patient!.FullName ?? "NA", appointment.Patient!.Phone);
         try
@@ -140,23 +164,27 @@ public sealed class PaymentService(
         }
 
         var now = Now;
-        var transactionId = webhook.TransactionId;
         if (webhook.Kind == WebhookKind.Refund)
         {
             if (webhook.Succeeded)
             {
-                await db.Payments.Where(p => p.Id == payment.Id && p.Status == PaymentStatus.Paid)
+                await db.Payments.Where(p => p.Id == payment.Id && (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Refunding))
                     .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PaymentStatus.Refunded).SetProperty(p => p.RefundedAt, now), ct);
             }
 
             return new WebhookResultDto(true);
         }
 
-        // The status guards make replays and out-of-order deliveries harmless: Paid and Refunded are never overwritten.
         if (webhook.Succeeded)
         {
-            await db.Payments.Where(p => p.Id == payment.Id && (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Failed))
-                .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PaymentStatus.Paid).SetProperty(p => p.PaidAt, now).SetProperty(p => p.ProviderTransactionId, transactionId), ct);
+            if ((webhook.AmountCents is { } cents && cents != PaymobPaymentProvider.ToCents(payment.AmountEgp))
+                || (webhook.Currency is { } currency && !string.Equals(currency, "EGP", StringComparison.OrdinalIgnoreCase)))
+            {
+                logger.LogError("Payment {PaymentId}: the provider reported a different amount or currency than expected; not applied, check it in the provider dashboard.", payment.Id);
+                return new WebhookResultDto(false);
+            }
+
+            await ApplySuccessAsync(payment.Id, payment.AppointmentId, webhook.TransactionId, ct);
         }
         else
         {
@@ -165,6 +193,47 @@ public sealed class PaymentService(
         }
 
         return new WebhookResultDto(true);
+    }
+
+    // A captured payment is always recorded, even when its checkout was cancelled or replaced locally. If the appointment is
+    // still valid (not cancelled and not paid otherwise) it becomes Paid; otherwise it is recorded and refunded automatically.
+    private async Task ApplySuccessAsync(Guid paymentId, Guid appointmentId, string? transactionId, CancellationToken ct)
+    {
+        var refundNeeded = false;
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await LockAppointmentAsync(appointmentId, ct);
+            var payment = await db.Payments.FirstAsync(p => p.Id == paymentId, ct);
+            if (payment.Status is PaymentStatus.Paid or PaymentStatus.Refunding or PaymentStatus.Refunded)
+            {
+                return; // replay
+            }
+
+            var appointmentStatus = await db.Appointments.AsNoTracking().Where(a => a.Id == appointmentId).Select(a => a.Status).FirstAsync(ct);
+            var otherPaid = await db.Payments.AnyAsync(p => p.AppointmentId == appointmentId && p.Id != paymentId
+                && (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Refunding), ct);
+            refundNeeded = appointmentStatus == AppointmentStatus.Cancelled || otherPaid;
+            if (!refundNeeded)
+            {
+                var others = await db.Payments.Where(p => p.AppointmentId == appointmentId && p.Id != paymentId && p.Status == PaymentStatus.Pending).ToListAsync(ct);
+                foreach (var other in others)
+                {
+                    other.Status = PaymentStatus.Cancelled;
+                }
+            }
+
+            payment.Status = refundNeeded ? PaymentStatus.Refunding : PaymentStatus.Paid;
+            payment.PaidAt = Now;
+            payment.ProviderTransactionId = transactionId;
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+
+        if (refundNeeded)
+        {
+            logger.LogWarning("Payment {PaymentId} was captured for a cancelled or already paid appointment; refunding it.", paymentId);
+            await FinishRefundAsync(paymentId);
+        }
     }
 
     // Where the provider's browser redirect lands: the client's returnUrl with the outcome (the client should still GET the payment).
@@ -178,7 +247,7 @@ public sealed class PaymentService(
     {
         var status = payment.Status switch
         {
-            PaymentStatus.Paid => "paid",
+            PaymentStatus.Paid or PaymentStatus.Refunding => "paid",
             PaymentStatus.Pending => "pending",
             _ => "failed",
         };
@@ -231,31 +300,42 @@ public sealed class PaymentService(
     // Cash at the desk: records a Paid cash payment for the appointment.
     public async Task<DashboardAppointmentDto> MarkPaidAsync(Guid appointmentId, CancellationToken ct)
     {
-        var appointment = await AppointmentMapper.WithDetails(scope.Appointments()).FirstOrDefaultAsync(a => a.Id == appointmentId, ct)
-            ?? throw ApiException.NotFound();
-        var total = TotalOf(appointment);
-        if (appointment.Status == AppointmentStatus.Cancelled || total <= 0 || appointment.Payments.Any(p => p.Status == PaymentStatus.Paid))
+        var visible = await scope.Appointments().AnyAsync(a => a.Id == appointmentId, ct);
+        if (!visible)
         {
-            throw new ApiException(ErrorCodes.PaymentNotAllowed);
+            throw ApiException.NotFound();
         }
 
-        foreach (var pending in appointment.Payments.Where(p => p.Status == PaymentStatus.Pending))
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
-            pending.Status = PaymentStatus.Cancelled;
-        }
+            await LockAppointmentAsync(appointmentId, ct);
+            var appointment = await AppointmentMapper.WithDetails(scope.Appointments()).FirstOrDefaultAsync(a => a.Id == appointmentId, ct)
+                ?? throw ApiException.NotFound();
+            var total = TotalOf(appointment);
+            if (appointment.Status == AppointmentStatus.Cancelled || total <= 0 || appointment.Payments.Any(p => p.Status is PaymentStatus.Paid or PaymentStatus.Refunding))
+            {
+                throw new ApiException(ErrorCodes.PaymentNotAllowed);
+            }
 
-        var now = Now;
-        db.Payments.Add(new Payment
-        {
-            AppointmentId = appointment.Id,
-            AmountEgp = total,
-            Status = PaymentStatus.Paid,
-            Method = PaymentMethod.Cash,
-            Provider = "cash",
-            CreatedAt = now,
-            PaidAt = now,
-        });
-        await db.SaveChangesAsync(ct);
+            foreach (var pending in appointment.Payments.Where(p => p.Status == PaymentStatus.Pending))
+            {
+                pending.Status = PaymentStatus.Cancelled;
+            }
+
+            var now = Now;
+            db.Payments.Add(new Payment
+            {
+                AppointmentId = appointment.Id,
+                AmountEgp = total,
+                Status = PaymentStatus.Paid,
+                Method = PaymentMethod.Cash,
+                Provider = "cash",
+                CreatedAt = now,
+                PaidAt = now,
+            });
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
 
         var reloaded = await AppointmentMapper.WithDetails(db.Appointments.AsNoTracking()).FirstAsync(a => a.Id == appointmentId, ct);
         return mapper.ToDashboardDto(reloaded);
@@ -268,23 +348,21 @@ public sealed class PaymentService(
             .Include(p => p.Appointment!).ThenInclude(a => a.Slot!).ThenInclude(s => s.Doctor)
             .Include(p => p.Appointment!).ThenInclude(a => a.Patient)
             .FirstOrDefaultAsync(p => p.Id == paymentId && appointmentIds.Contains(p.AppointmentId), ct) ?? throw ApiException.NotFound();
-        if (payment.Status != PaymentStatus.Paid)
+
+        // Claim first: only the request that moves Paid to Refunding talks to the provider.
+        if (!await ClaimRefundAsync(paymentId, ct))
         {
+            await db.Entry(payment).ReloadAsync(ct);
             throw new ApiException(ErrorCodes.InvalidTransition, $"Only a Paid payment can be refunded (this one is {payment.Status}).");
         }
 
-        if (payment.Method == PaymentMethod.Online)
+        var ok = await FinishRefundAsync(paymentId);
+        if (!ok)
         {
-            var result = await RequestRefundAsync(payment, ct);
-            if (!result.Succeeded)
-            {
-                throw new ApiException(ErrorCodes.ProviderError, "The provider did not accept the refund.");
-            }
+            throw new ApiException(ErrorCodes.ProviderError, "The provider did not accept the refund.");
         }
 
-        payment.Status = PaymentStatus.Refunded;
-        payment.RefundedAt = Now;
-        await db.SaveChangesAsync(ct);
+        await db.Entry(payment).ReloadAsync(ct);
         return ToDashboard(payment);
     }
 
@@ -293,39 +371,68 @@ public sealed class PaymentService(
     {
         try
         {
-            var payments = await db.Payments.Where(p => p.AppointmentId == appointmentId && (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Paid)).ToListAsync(ct);
-            foreach (var payment in payments)
+            List<Guid> toRefund;
+            await using (var tx = await db.Database.BeginTransactionAsync(ct))
             {
-                if (payment.Status == PaymentStatus.Pending)
-                {
-                    payment.Status = PaymentStatus.Cancelled;
-                    continue;
-                }
-
-                if (payment.Method != PaymentMethod.Online)
-                {
-                    continue; // cash is returned at the desk
-                }
-
-                var result = await RequestRefundAsync(payment, ct);
-                if (result.Succeeded)
-                {
-                    payment.Status = PaymentStatus.Refunded;
-                    payment.RefundedAt = Now;
-                }
-                else
-                {
-                    logger.LogWarning("Refund of payment {PaymentId} was not accepted; it stays Paid for a manual refund.", payment.Id);
-                }
+                await LockAppointmentAsync(appointmentId, ct);
+                await db.Payments.Where(p => p.AppointmentId == appointmentId && p.Status == PaymentStatus.Pending)
+                    .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PaymentStatus.Cancelled), ct);
+                toRefund = await db.Payments.AsNoTracking()
+                    .Where(p => p.AppointmentId == appointmentId && p.Status == PaymentStatus.Paid && p.Method == PaymentMethod.Online) // cash is returned at the desk
+                    .Select(p => p.Id).ToListAsync(ct);
+                await tx.CommitAsync(ct);
             }
 
-            await db.SaveChangesAsync(ct);
+            foreach (var id in toRefund)
+            {
+                if (await ClaimRefundAsync(id, ct) && !await FinishRefundAsync(id))
+                {
+                    logger.LogWarning("Refund of payment {PaymentId} was not accepted; it stays Paid for a manual refund.", id);
+                }
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Automatic refund for appointment {AppointmentId} failed; refund it from the dashboard.", appointmentId);
         }
     }
+
+    private async Task<bool> ClaimRefundAsync(Guid paymentId, CancellationToken ct) =>
+        await db.Payments.Where(p => p.Id == paymentId && p.Status == PaymentStatus.Paid)
+            .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PaymentStatus.Refunding), ct) == 1;
+
+    // Runs after a successful claim (status Refunding): refunds through the provider (online only) and settles the row.
+    // A refusal or failure puts the payment back to Paid so it can be retried by hand.
+    private async Task<bool> FinishRefundAsync(Guid paymentId)
+    {
+        var ok = false;
+        try
+        {
+            var payment = await db.Payments.AsNoTracking().FirstAsync(p => p.Id == paymentId);
+            ok = payment.Method != PaymentMethod.Online || (await RequestRefundAsync(payment, CancellationToken.None)).Succeeded;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Refund of payment {PaymentId} failed.", paymentId);
+        }
+
+        var now = Now;
+        if (ok)
+        {
+            await db.Payments.Where(p => p.Id == paymentId && p.Status == PaymentStatus.Refunding)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PaymentStatus.Refunded).SetProperty(p => p.RefundedAt, now));
+        }
+        else
+        {
+            await db.Payments.Where(p => p.Id == paymentId && p.Status == PaymentStatus.Refunding)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PaymentStatus.Paid));
+        }
+
+        return ok;
+    }
+
+    private Task LockAppointmentAsync(Guid appointmentId, CancellationToken ct) =>
+        db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({"payment:" + appointmentId}, 0))", ct);
 
     private async Task<RefundResult> RequestRefundAsync(Payment payment, CancellationToken ct)
     {
@@ -348,7 +455,9 @@ public sealed class PaymentService(
 
         if (uri.Scheme is "http" or "https")
         {
-            var hosts = options.Value.ReturnUrlHosts.Append(clinic.Website.Domain).Where(h => !string.IsNullOrWhiteSpace(h));
+            var domain = clinic.Website.Domain?.Trim() ?? "";
+            var website = domain.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? new[] { domain, domain[4..] } : [domain, "www." + domain];
+            var hosts = options.Value.ReturnUrlHosts.Concat(domain.Length == 0 ? [] : website).Where(h => !string.IsNullOrWhiteSpace(h));
             return hosts.Any(h => string.Equals(h.Trim(), uri.Host, StringComparison.OrdinalIgnoreCase));
         }
 

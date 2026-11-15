@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
@@ -59,13 +60,16 @@ public sealed record MyRecordsDto(IReadOnlyList<PatientRecordDto> Entries, Medic
 
 public sealed record AttachmentUrlDto(string AttachmentUrl);
 
+public sealed record AttachmentFileResult(Stream Content, string ContentType, string FileName);
+
 public sealed partial class RecordsService(
     MoonlightDbContext db,
     CurrentUser current,
     DashboardScope scope,
     AppointmentMapper mapper,
     Language lang,
-    IPhotoStorage storage,
+    IRecordFileStorage storage,
+    IOptions<StorageOptions> storageOptions,
     TimeProvider clock)
 {
     public const int MaxAttachmentBytes = 10 * 1024 * 1024;
@@ -228,11 +232,16 @@ public sealed partial class RecordsService(
     public async Task DeleteRecordAsync(Guid id, CancellationToken ct)
     {
         var entry = await LoadEditableAsync(id, ct);
+        var file = entry.AttachmentFile;
         db.PatientRecordEntries.Remove(entry);
         await db.SaveChangesAsync(ct);
+        if (file is not null)
+        {
+            storage.Delete(file);
+        }
     }
 
-    public async Task<string> UploadAttachmentAsync(Guid id, IFormFile? file, string baseUrl, CancellationToken ct)
+    public async Task<string> UploadAttachmentAsync(Guid id, IFormFile? file, CancellationToken ct)
     {
         var entry = await LoadEditableAsync(id, ct);
         if (file is null || file.Length == 0)
@@ -251,19 +260,78 @@ public sealed partial class RecordsService(
         var extension = Detect(header.AsSpan(0, read)) ?? throw ApiException.Validation("file", "Only pdf, jpg and png files are accepted.");
         stream.Position = 0;
 
-        var path = await storage.SaveAsync($"{entry.Id:N}-{Guid.NewGuid():N}.{extension}", stream, ct, "records");
-        entry.AttachmentUrl = baseUrl.TrimEnd('/') + path;
+        var previous = entry.AttachmentFile;
+        var key = await storage.SaveAsync($"{entry.Id:N}-{Guid.NewGuid():N}.{extension}", stream, ct);
+        entry.AttachmentFile = key;
+        entry.AttachmentContentType = ContentTypeOf(extension);
         entry.UpdatedAt = Now;
-        await db.SaveChangesAsync(ct);
-        return entry.AttachmentUrl;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            storage.Delete(key);
+            throw;
+        }
+
+        if (previous is not null)
+        {
+            storage.Delete(previous);
+        }
+
+        return DashboardUrl(entry.Id);
     }
+
+    // The attachment of an entry in the caller's clinic, for staff and for doctors who have the patient in scope.
+    public async Task<AttachmentFileResult> OpenDashboardAttachmentAsync(Guid id, CancellationToken ct)
+    {
+        var entry = await RecordQuery().FirstOrDefaultAsync(r => r.Id == id, ct) ?? throw ApiException.NotFound();
+        if (!await scope.Appointments().AnyAsync(a => a.PatientUserId == entry.PatientUserId, ct))
+        {
+            throw ApiException.NotFound();
+        }
+
+        return Open(entry);
+    }
+
+    // The patient's own entry, only when the clinic shared it.
+    public async Task<AttachmentFileResult> OpenMineAttachmentAsync(Guid id, CancellationToken ct)
+    {
+        var userId = current.Id;
+        var entry = await db.PatientRecordEntries.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == id && r.PatientUserId == userId && r.VisibleToPatient, ct) ?? throw ApiException.NotFound();
+        return Open(entry);
+    }
+
+    private AttachmentFileResult Open(PatientRecordEntry entry)
+    {
+        var stream = entry.AttachmentFile is null ? null : storage.Open(entry.AttachmentFile);
+        return stream is null
+            ? throw ApiException.NotFound()
+            : new AttachmentFileResult(stream, entry.AttachmentContentType ?? "application/octet-stream", entry.AttachmentFile!);
+    }
+
+    private string DashboardUrl(Guid id) => Absolute($"/api/v1/dashboard/records/{id}/attachment");
+
+    private string PatientUrl(Guid id) => Absolute($"/api/v1/me/records/{id}/attachment");
+
+    // Relative unless a public base URL is configured: the request's Host header is never trusted.
+    private string Absolute(string path) => storageOptions.Value.PublicBaseUrl.TrimEnd('/') + path;
+
+    private static string ContentTypeOf(string extension) => extension switch
+    {
+        "pdf" => "application/pdf",
+        "jpg" => "image/jpeg",
+        _ => "image/png",
+    };
 
     // ---- Patient ---------------------------------------------------------------------------------------------------
 
     public async Task<MyRecordsDto> MineAsync(Guid? familyMemberId, CancellationToken ct)
     {
         var userId = current.Id;
-        if (familyMemberId is { } member && !await db.FamilyMembers.AnyAsync(f => f.Id == member && f.OwnerUserId == userId, ct))
+        if (familyMemberId is { } member && !await db.FamilyMembers.AnyAsync(f => f.Id == member && f.OwnerUserId == userId && f.DeletedAt == null, ct))
         {
             throw ApiException.NotFound();
         }
@@ -281,7 +349,7 @@ public sealed partial class RecordsService(
                 e.Kind,
                 e.Title,
                 e.Body,
-                e.AttachmentUrl,
+                e.AttachmentFile is null ? null : PatientUrl(e.Id),
                 e.DoctorId is { } d && doctors.TryGetValue(d, out var doctor) ? lang.Pick(doctor.NameAr, doctor.NameEn) : null,
                 e.CreatedAt)).ToList(),
             info is null ? null : ToDto(info));
@@ -330,7 +398,7 @@ public sealed partial class RecordsService(
         var authors = await db.Users.AsNoTracking().Where(u => authorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.FullName, ct);
         return entries.Select(e => new RecordDto(
             e.Id, e.PatientUserId, e.FamilyMemberId, e.AppointmentId, e.DoctorId, e.AuthorUserId, authors.GetValueOrDefault(e.AuthorUserId),
-            e.Kind, e.Title, e.Body, e.AttachmentUrl, e.VisibleToPatient, e.CreatedAt, e.UpdatedAt)).ToList();
+            e.Kind, e.Title, e.Body, e.AttachmentFile is null ? null : DashboardUrl(e.Id), e.VisibleToPatient, e.CreatedAt, e.UpdatedAt)).ToList();
     }
 
     private static void ValidateRecord(RecordInputDto request) =>
@@ -429,7 +497,14 @@ public class DashboardPatientsController(RecordsService records) : ControllerBas
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
     public async Task<AttachmentUrlDto> UploadAttachment(Guid id, IFormFile? file, CancellationToken ct) =>
-        new(await records.UploadAttachmentAsync(id, file, $"{Request.Scheme}://{Request.Host}", ct));
+        new(await records.UploadAttachmentAsync(id, file, ct));
+
+    /// <summary>Download the attachment (needs the bearer token; staff, or a doctor who has the patient in scope). The previous file is deleted when it is replaced.</summary>
+    [HttpGet("api/v1/dashboard/records/{id:guid}/attachment")]
+    [Produces("application/pdf", "image/jpeg", "image/png")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadAttachment(Guid id, CancellationToken ct) => AttachmentResponse.Create(this, await records.OpenDashboardAttachmentAsync(id, ct));
 }
 
 [ApiController]
@@ -446,4 +521,21 @@ public class MyRecordsController(RecordsService records) : ControllerBase
     [ProducesResponseType(typeof(MyRecordsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
     public Task<MyRecordsDto> Mine(Guid? familyMemberId, CancellationToken ct) => records.MineAsync(familyMemberId, ct);
+
+    /// <summary>Download the attachment of an entry the clinic shared with me (needs the bearer token).</summary>
+    [HttpGet("{id:guid}/attachment")]
+    [Produces("application/pdf", "image/jpeg", "image/png")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadAttachment(Guid id, CancellationToken ct) => AttachmentResponse.Create(this, await records.OpenMineAttachmentAsync(id, ct));
+}
+
+internal static class AttachmentResponse
+{
+    public static IActionResult Create(ControllerBase controller, AttachmentFileResult file)
+    {
+        controller.Response.Headers.CacheControl = "private, no-store";
+        controller.Response.Headers.XContentTypeOptions = "nosniff";
+        return controller.File(file.Content, file.ContentType);
+    }
 }

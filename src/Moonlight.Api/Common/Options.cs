@@ -70,6 +70,12 @@ public sealed class StorageOptions
     public string Path { get; set; } = "uploads";
 
     public string RequestPath { get; set; } = "/uploads";
+
+    // Private folder for patient record attachments. Never served as static files; only through the authorized endpoints.
+    public string RecordsPath { get; set; } = "private-records";
+
+    // Public base URL of this API, prefixed to attachment links. Empty: links are relative paths (the Host header is never trusted).
+    public string PublicBaseUrl { get; set; } = "";
 }
 
 public sealed class RemindersOptions
@@ -99,10 +105,14 @@ public sealed class PaymentsOptions
 {
     public const string Section = "Payments";
 
-    // "Mock" (default; a backend-served checkout page) or "Paymob".
+    // "Mock" (default; a backend-served checkout page) or "Paymob". Outside Development the Mock provider is only usable
+    // when AllowMock is true; otherwise online payments answer 409 PAYMENT_NOT_ALLOWED ("not configured").
     public string Provider { get; set; } = "Mock";
 
-    // Public base URL of this API, used to build checkout and return links. Empty: taken from the current request.
+    // Staging demos only: lets the unsigned Mock provider run outside Development. Never set it in production.
+    public bool AllowMock { get; set; }
+
+    // Public base URL of this API, used to build checkout links. Required outside Development (Mock only falls back to the request host in Development).
     public string PublicBaseUrl { get; set; } = "";
 
     // Hosts a returnUrl may point to (in addition to the clinic website domain and the mobile app scheme).
@@ -115,8 +125,12 @@ public sealed class WhatsAppOptions
 {
     public const string Section = "WhatsApp";
 
-    // "Mock" (default; logs only) or "Meta" (WhatsApp Cloud API).
+    // "Mock" (default; delivers nothing) or "Meta" (WhatsApp Cloud API). Outside Development the Mock sender is only usable
+    // when AllowMock is true; otherwise every WhatsApp message is recorded in the outbox as Failed ("not configured").
     public string Provider { get; set; } = "Mock";
+
+    // Staging demos only: lets the Mock sender run outside Development.
+    public bool AllowMock { get; set; }
 
     public string ApiBaseUrl { get; set; } = "https://graph.facebook.com/v21.0";
 
@@ -135,6 +149,8 @@ public sealed class WhatsAppOptions
 
 public sealed class JitsiOptions
 {
+    // The public meet.jit.si server is for demos only: rooms have no moderator role and no expiry. Production needs a
+    // self-hosted Jitsi server (with JWT auth) or JaaS; set Video:Jitsi:BaseUrl to it.
     public string BaseUrl { get; set; } = "https://meet.jit.si";
 }
 
@@ -157,4 +173,7 @@ public sealed class BackgroundJobsOptions
 
     // Recurring recall campaigns run once a day at this clinic-local hour.
     public int RecallHour { get; set; } = 10;
+
+    // Runs waiting-list expiry, review prompts and recurring recall independently of Reminders:Enabled.
+    public bool Enabled { get; set; } = true;
 }

@@ -112,6 +112,9 @@ public class FamilyMember
     public Gender? Gender { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    // Soft delete: clinic records and appointments keep pointing at the member; hidden from the patient's lists and booking.
+    public DateTime? DeletedAt { get; set; }
 }
 
 public enum MessageChannel
@@ -160,6 +163,9 @@ public enum PaymentStatus
     Failed,
     Refunded,
     Cancelled,
+
+    // A refund is in flight (claimed before the provider is called); counts as paid for the appointment.
+    Refunding,
 }
 
 public enum PaymentMethod
@@ -284,7 +290,10 @@ public class PatientRecordEntry
 
     public string? Body { get; set; }
 
-    public string? AttachmentUrl { get; set; }
+    // Key of the private file (see IRecordFileStorage); served only through the authorized attachment endpoints.
+    public string? AttachmentFile { get; set; }
+
+    public string? AttachmentContentType { get; set; }
 
     public bool VisibleToPatient { get; set; }
 

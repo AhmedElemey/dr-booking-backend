@@ -88,7 +88,7 @@ public sealed class AppointmentMapper(Language lang, FeatureService features)
 
     public static AppointmentPaymentStatus PaymentStatusOf(Appointment a)
     {
-        if (a.Payments.Any(p => p.Status == PaymentStatus.Paid))
+        if (a.Payments.Any(p => p.Status is PaymentStatus.Paid or PaymentStatus.Refunding))
         {
             return AppointmentPaymentStatus.Paid;
         }

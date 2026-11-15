@@ -99,7 +99,7 @@ public sealed class ReportService(MoonlightDbContext db, DashboardScope scope, L
             paymentsQuery = paymentsQuery.Where(p => p.Appointment!.Slot!.DoctorId == d);
         }
 
-        var paid = await paymentsQuery.Where(p => p.Status == PaymentStatus.Paid && p.PaidAt >= start && p.PaidAt < end).ToListAsync(ct);
+        var paid = await paymentsQuery.Where(p => (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Refunded || p.Status == PaymentStatus.Refunding) && p.PaidAt >= start && p.PaidAt < end).ToListAsync(ct);
         var refunded = await paymentsQuery.Where(p => p.Status == PaymentStatus.Refunded && p.RefundedAt >= start && p.RefundedAt < end).ToListAsync(ct);
 
         var completed = rows.Where(r => r.Status == AppointmentStatus.Completed).ToList();

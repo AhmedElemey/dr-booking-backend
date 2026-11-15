@@ -34,6 +34,7 @@ public sealed record RecallDelivery(DeliveryOutcome Outcome, RecallChannel Chann
 // (outbound_messages). Never throws for a provider failure: the failure is the outbox row.
 public sealed class MessageDispatcher(
     MoonlightDbContext db,
+    DbContextOptions<MoonlightDbContext> dbOptions,
     IPushSender push,
     ISmsSender sms,
     IWhatsAppSender whatsApp,
@@ -172,7 +173,9 @@ public sealed class MessageDispatcher(
     {
         try
         {
-            db.OutboundMessages.Add(new OutboundMessage
+            // A context of its own: the write never flushes (or inherits the failure of) the caller's pending changes.
+            await using var outbox = new MoonlightDbContext(dbOptions);
+            outbox.OutboundMessages.Add(new OutboundMessage
             {
                 Channel = channel,
                 To = to,
@@ -185,7 +188,7 @@ public sealed class MessageDispatcher(
                 Error = error is null ? null : Truncate(error, 1000),
                 CreatedAt = Now,
             });
-            await db.SaveChangesAsync(ct);
+            await outbox.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

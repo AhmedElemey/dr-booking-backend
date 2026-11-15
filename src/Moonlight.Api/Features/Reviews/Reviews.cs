@@ -216,13 +216,15 @@ public class DashboardReviewsController(ReviewService reviews) : ControllerBase
     public Task<PagedResult<DashboardReviewDto>> List(Guid? doctorId, ReviewStatus? status, int? page, int? pageSize, CancellationToken ct) =>
         reviews.DashboardListAsync(doctorId, status, PageRequest.Create(page, pageSize), ct);
 
-    /// <summary>Hide a review from the public list.</summary>
+    /// <summary>Hide a review from the public list. Clinic staff only (doctors may reply but not moderate).</summary>
     [HttpPost("{id:guid}/hide")]
+    [Authorize(Roles = Roles.ClinicStaff)]
     [ProducesResponseType(typeof(DashboardReviewDto), StatusCodes.Status200OK)]
     public Task<DashboardReviewDto> Hide(Guid id, CancellationToken ct) => reviews.SetStatusAsync(id, ReviewStatus.Hidden, ct);
 
-    /// <summary>Publish a hidden review again.</summary>
+    /// <summary>Publish a hidden review again. Clinic staff only.</summary>
     [HttpPost("{id:guid}/publish")]
+    [Authorize(Roles = Roles.ClinicStaff)]
     [ProducesResponseType(typeof(DashboardReviewDto), StatusCodes.Status200OK)]
     public Task<DashboardReviewDto> Publish(Guid id, CancellationToken ct) => reviews.SetStatusAsync(id, ReviewStatus.Published, ct);
 

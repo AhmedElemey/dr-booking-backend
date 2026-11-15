@@ -111,16 +111,17 @@ public sealed class PaymobPaymentProvider(HttpClient http, IOptions<PaymentsOpti
             throw new WebhookSignatureException("The callback has no transaction object.");
         }
 
-        request.Query.TryGetValue("hmac", out var received);
-        if (!IsValidSignature(obj, Settings.HmacSecret, received))
-        {
-            throw new WebhookSignatureException("The HMAC signature does not match.");
-        }
-
+        // Only TRANSACTION callbacks carry state; TOKEN (card token) and other callbacks are acknowledged without effect.
         var type = root.TryGetProperty("type", out var t) ? t.GetString() : "TRANSACTION";
         if (!string.Equals(type, "TRANSACTION", StringComparison.OrdinalIgnoreCase))
         {
             return Task.FromResult(new WebhookEvent(WebhookKind.Ignored, "", null, false, request.Body));
+        }
+
+        request.Query.TryGetValue("hmac", out var received);
+        if (!IsValidSignature(obj, Settings.HmacSecret, received))
+        {
+            throw new WebhookSignatureException("The HMAC signature does not match.");
         }
 
         var orderId = obj.TryGetProperty("order", out var order) && order.TryGetProperty("id", out var oid) ? Scalar(oid) : "";
@@ -132,8 +133,15 @@ public sealed class PaymobPaymentProvider(HttpClient http, IOptions<PaymentsOpti
             return Task.FromResult(new WebhookEvent(WebhookKind.Refund, orderId, transactionId, Flag(obj, "success"), request.Body));
         }
 
-        var succeeded = Flag(obj, "success") && !Flag(obj, "pending");
-        return Task.FromResult(new WebhookEvent(WebhookKind.Payment, orderId, transactionId, succeeded, request.Body));
+        // Wallet and kiosk payments report pending=true until the customer pays: no change, the payment stays Pending.
+        if (Flag(obj, "pending"))
+        {
+            return Task.FromResult(new WebhookEvent(WebhookKind.Ignored, orderId, transactionId, false, request.Body));
+        }
+
+        long? amountCents = obj.TryGetProperty("amount_cents", out var amount) && amount.ValueKind == JsonValueKind.Number && amount.TryGetInt64(out var cents) ? cents : null;
+        var currency = obj.TryGetProperty("currency", out var cur) && cur.ValueKind == JsonValueKind.String ? cur.GetString() : null;
+        return Task.FromResult(new WebhookEvent(WebhookKind.Payment, orderId, transactionId, Flag(obj, "success"), request.Body, amountCents, currency));
     }
 
     public async Task<RefundResult> RefundAsync(Payment payment, CancellationToken ct = default)
