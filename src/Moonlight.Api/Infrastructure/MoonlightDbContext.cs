@@ -197,7 +197,15 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
         modelBuilder.Entity<WorkingHoursTemplate>(e =>
         {
             e.Property(t => t.Name).HasMaxLength(200);
-            e.Property(t => t.Rules).HasColumnType("jsonb");
+            e.Property(t => t.Rules)
+                .HasColumnType("jsonb")
+                .HasConversion(
+                    rules => System.Text.Json.JsonSerializer.Serialize(rules, (System.Text.Json.JsonSerializerOptions?)null),
+                    json => System.Text.Json.JsonSerializer.Deserialize<List<WorkingHoursRule>>(json, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<WorkingHoursRule>(),
+                    new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<List<WorkingHoursRule>>(
+                        (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                        v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
+                        v => System.Text.Json.JsonSerializer.Deserialize<List<WorkingHoursRule>>(System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null), (System.Text.Json.JsonSerializerOptions?)null)!));
             e.HasIndex(t => t.ClinicId);
             e.HasOne<Clinic>().WithMany().HasForeignKey(t => t.ClinicId).OnDelete(DeleteBehavior.Cascade);
         });
