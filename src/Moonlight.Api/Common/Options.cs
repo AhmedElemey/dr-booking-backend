@@ -80,3 +80,81 @@ public sealed class RemindersOptions
 
     public int IntervalMinutes { get; set; } = 5;
 }
+
+public sealed class PaymobOptions
+{
+    public string BaseUrl { get; set; } = "https://accept.paymob.com";
+
+    public string ApiKey { get; set; } = "";
+
+    public string IntegrationId { get; set; } = "";
+
+    public string IframeId { get; set; } = "";
+
+    // Used to verify transaction callbacks (HMAC-SHA512). Never commit it; set Payments__Paymob__HmacSecret.
+    public string HmacSecret { get; set; } = "";
+}
+
+public sealed class PaymentsOptions
+{
+    public const string Section = "Payments";
+
+    // "Mock" (default; a backend-served checkout page) or "Paymob".
+    public string Provider { get; set; } = "Mock";
+
+    // Public base URL of this API, used to build checkout and return links. Empty: taken from the current request.
+    public string PublicBaseUrl { get; set; } = "";
+
+    // Hosts a returnUrl may point to (in addition to the clinic website domain and the mobile app scheme).
+    public string[] ReturnUrlHosts { get; set; } = [];
+
+    public PaymobOptions Paymob { get; set; } = new();
+}
+
+public sealed class WhatsAppOptions
+{
+    public const string Section = "WhatsApp";
+
+    // "Mock" (default; logs only) or "Meta" (WhatsApp Cloud API).
+    public string Provider { get; set; } = "Mock";
+
+    public string ApiBaseUrl { get; set; } = "https://graph.facebook.com/v21.0";
+
+    public string PhoneNumberId { get; set; } = "";
+
+    public string AccessToken { get; set; } = "";
+
+    // Meta language codes of the approved templates.
+    public string LanguageCodeAr { get; set; } = "ar";
+
+    public string LanguageCodeEn { get; set; } = "en";
+
+    // Approved template name per message kind (keys confirmed, cancelled, reminder, waitlist, review, recall; empty keeps the built-in default name).
+    public Dictionary<string, string> Templates { get; set; } = [];
+}
+
+public sealed class JitsiOptions
+{
+    public string BaseUrl { get; set; } = "https://meet.jit.si";
+}
+
+public sealed class VideoOptions
+{
+    public const string Section = "Video";
+
+    // "Jitsi" (default) or "Mock".
+    public string Provider { get; set; } = "Jitsi";
+
+    public JitsiOptions Jitsi { get; set; } = new();
+}
+
+public sealed class BackgroundJobsOptions
+{
+    public const string Section = "Jobs";
+
+    // The "rate your visit" prompt goes out this long after an appointment is marked Completed.
+    public int ReviewPromptDelayMinutes { get; set; } = 30;
+
+    // Recurring recall campaigns run once a day at this clinic-local hour.
+    public int RecallHour { get; set; } = 10;
+}
