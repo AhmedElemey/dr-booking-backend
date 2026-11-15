@@ -3,11 +3,23 @@ using Microsoft.Extensions.Options;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
+using Moonlight.Api.Features.Flags;
+using Moonlight.Api.Features.Holidays;
+using Moonlight.Api.Features.Insurance;
+using Moonlight.Api.Features.Reviews;
 using Moonlight.Api.Infrastructure;
 
 namespace Moonlight.Api.Features.Catalog;
 
-public sealed class CatalogService(MoonlightDbContext db, Language lang, TimeProvider clock, IOptions<BookingOptions> booking)
+public sealed class CatalogService(
+    MoonlightDbContext db,
+    Language lang,
+    TimeProvider clock,
+    IOptions<BookingOptions> booking,
+    FeatureService features,
+    HolidayService holidays,
+    InsuranceService insurance,
+    ReviewService reviews)
 {
     public const int MaxSlotRangeDays = 14;
 
@@ -25,9 +37,14 @@ public sealed class CatalogService(MoonlightDbContext db, Language lang, TimePro
         Visible(db).Select(d => d.Clinic!.City).Distinct().OrderBy(c => c).ToListAsync(ct);
 
     public async Task<PagedResult<DoctorSummaryDto>> SearchDoctorsAsync(
-        Guid? specialtyId, string? city, string? q, PageRequest page, CancellationToken ct)
+        Guid? specialtyId, string? city, string? q, Guid? insuranceProviderId, PageRequest page, CancellationToken ct)
     {
         var query = Visible(db).AsNoTracking();
+        if (insuranceProviderId is { } provider && features.IsEnabled(FeatureKeys.Insurance))
+        {
+            query = query.Where(d => db.DoctorInsuranceProviders.Any(i => i.DoctorId == d.Id && i.InsuranceProviderId == provider && i.InsuranceProvider!.IsActive));
+        }
+
         if (specialtyId is { } specialty)
         {
             query = query.Where(d => d.SpecialtyId == specialty);
@@ -51,7 +68,13 @@ public sealed class CatalogService(MoonlightDbContext db, Language lang, TimePro
 
         return await ordered.Include(d => d.Specialty).Include(d => d.Clinic).ToPagedAsync(
             page,
-            rows => Task.FromResult<IReadOnlyList<DoctorSummaryDto>>(rows.Select(ToSummary).ToList()),
+            async rows =>
+            {
+                var ids = rows.Select(d => d.Id).ToList();
+                var accepted = features.IsEnabled(FeatureKeys.Insurance) ? await insurance.AcceptedByDoctorAsync(ids, ct) : [];
+                var ratings = await reviews.RatingsAsync(ids, ct);
+                return (IReadOnlyList<DoctorSummaryDto>)rows.Select(d => ToSummary(d, accepted.GetValueOrDefault(d.Id) ?? [], ratings.GetValueOrDefault(d.Id))).ToList();
+            },
             ct);
     }
 
@@ -63,6 +86,8 @@ public sealed class CatalogService(MoonlightDbContext db, Language lang, TimePro
             .OrderBy(s => s.DurationMinutes).ThenBy(s => s.Id)
             .ToListAsync(ct);
         var clinic = doctor.Clinic!;
+        var accepted = features.IsEnabled(FeatureKeys.Insurance) ? await insurance.AcceptedByDoctorAsync([doctor.Id], ct) : [];
+        var ratings = await reviews.RatingsAsync([doctor.Id], ct);
         return new DoctorProfileDto(
             doctor.Id,
             doctor.Slug,
@@ -81,7 +106,10 @@ public sealed class CatalogService(MoonlightDbContext db, Language lang, TimePro
                 clinic.Timezone),
             doctor.YearsExperience,
             doctor.ConsultationFeeEgp,
-            services.Select(s => new PublicServiceDto(s.Id, lang.Pick(s.NameAr, s.NameEn), s.DurationMinutes, s.PriceEgp)).ToList());
+            services.Select(s => new PublicServiceDto(s.Id, lang.Pick(s.NameAr, s.NameEn), s.DurationMinutes, s.PriceEgp)).ToList(),
+            OffersVideoPublic(doctor),
+            accepted.GetValueOrDefault(doctor.Id) ?? [],
+            ratings.GetValueOrDefault(doctor.Id));
     }
 
     public async Task<DoctorSlotsDto> GetOpenSlotsAsync(string idOrSlug, DateOnly? from, DateOnly? to, CancellationToken ct)
@@ -104,6 +132,13 @@ public sealed class CatalogService(MoonlightDbContext db, Language lang, TimePro
             .OrderBy(s => s.StartsAt)
             .ToListAsync(ct);
 
+        // Holiday dates (holidayCalendar) are not bookable: their slots are left out and the dates are listed separately.
+        var closed = await holidays.ClosedAsync(doctor.ClinicId, fromDate, toDate, ct);
+        if (closed.Count > 0)
+        {
+            slots = slots.Where(s => !closed.ContainsKey(ClinicTime.LocalDate(s.StartsAt, zone))).ToList();
+        }
+
         var days = slots
             .GroupBy(s => ClinicTime.LocalDate(s.StartsAt, zone))
             .OrderBy(g => g.Key)
@@ -111,7 +146,8 @@ public sealed class CatalogService(MoonlightDbContext db, Language lang, TimePro
                 g.Key,
                 g.Select(s => new PublicSlotDto(s.Id, s.StartsAt, s.EndsAt, ClinicTime.ToLocal(s.StartsAt, zone).ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture))).ToList()))
             .ToList();
-        return new DoctorSlotsDto(doctor.Id, doctor.Clinic.Timezone, days);
+        var closedDates = closed.Values.OrderBy(h => h.Date).Select(h => new ClosedDateDto(h.Date, lang.Pick(h.NameAr, h.NameEn))).ToList();
+        return new DoctorSlotsDto(doctor.Id, doctor.Clinic.Timezone, days, closedDates);
     }
 
     private async Task<Doctor> FindVisibleAsync(string idOrSlug, CancellationToken ct)
@@ -123,7 +159,9 @@ public sealed class CatalogService(MoonlightDbContext db, Language lang, TimePro
         return doctor ?? throw ApiException.NotFound();
     }
 
-    private DoctorSummaryDto ToSummary(Doctor d) => new(
+    private bool OffersVideoPublic(Doctor d) => d.OffersVideo && features.IsEnabled(FeatureKeys.VideoConsultation);
+
+    private DoctorSummaryDto ToSummary(Doctor d, IReadOnlyList<InsuranceProviderRefDto> accepted, RatingDto? rating) => new(
         d.Id,
         d.Slug,
         lang.Pick(d.NameAr, d.NameEn),
@@ -131,5 +169,8 @@ public sealed class CatalogService(MoonlightDbContext db, Language lang, TimePro
         new SpecialtyDto(d.Specialty!.Id, lang.Pick(d.Specialty.NameAr, d.Specialty.NameEn)),
         new ClinicSummaryDto(d.Clinic!.Id, lang.Pick(d.Clinic.NameAr, d.Clinic.NameEn), d.Clinic.City),
         d.YearsExperience,
-        d.ConsultationFeeEgp);
+        d.ConsultationFeeEgp,
+        OffersVideoPublic(d),
+        accepted,
+        rating);
 }

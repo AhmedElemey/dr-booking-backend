@@ -75,7 +75,7 @@ public sealed class FeatureServiceTests
         var service = NewService();
 
         Assert.Equal(FeatureSources.Defaults, service.Current.Source);
-        Assert.Equal(8, service.Current.Features.Count);
+        Assert.Equal(FeatureKeys.All.Count, service.Current.Features.Count);
         Assert.True(service.IsEnabled(FeatureKeys.GuestBrowsing));
         Assert.False(service.IsEnabled(FeatureKeys.SmsNotifications));
     }
@@ -145,7 +145,7 @@ public sealed class ConsolePullerTests
         Assert.Equal(FeatureSources.Console, _features.Current.Source);
         Assert.Equal(new DateTime(2026, 11, 14, 17, 0, 0, DateTimeKind.Utc), _features.Current.UpdatedAt);
         Assert.False(_store.Stored!.Features[FeatureKeys.GuestBrowsing]);
-        Assert.Equal(8, _store.Stored.Features.Count);
+        Assert.Equal(FeatureKeys.All.Count, _store.Stored.Features.Count);
     }
 
     [Fact]

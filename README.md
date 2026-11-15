@@ -56,6 +56,23 @@ Environment variables use `__` for nesting (`Jwt__Key`).
 | `Console__ClinicId` | `console.clinicId` in `clinic.config.json` | this clinic's id in the console |
 | `Console__ApiKey` | empty | sent as `X-Clinic-Key`; keep it a secret, never put it in the config file |
 | `Console__RefreshSeconds` | 300 | how often the console is pulled (at least 1) |
+| `Payments__Provider` | `Mock` | `Mock` (backend-served checkout page) or `Paymob`; startup fails if Paymob is chosen without its keys. Outside Development, Mock is refused unless `Payments__AllowMock=true`: payments then answer 409 `PAYMENT_NOT_ALLOWED` ("not configured") |
+| `Payments__AllowMock` | `false` | staging demos only: allows the unsigned Mock provider outside Development |
+| `Payments__PublicBaseUrl` | empty | public URL of this API for checkout links; **required outside Development** (the request host is only used in Development) |
+| `Storage__RecordsPath` | `private-records` | private folder of patient record attachments (never served statically; downloads are authorized endpoints) |
+| `Storage__PublicBaseUrl` | empty | prefix of attachment URLs; empty gives relative paths |
+| `Payments__ReturnUrlHosts__0..` | empty | web hosts a pay `returnUrl` may point to (the clinic website domain and the mobile app scheme from `clinic.config.json` are always allowed) |
+| `Payments__Paymob__ApiKey`, `IntegrationId`, `IframeId`, `HmacSecret`, `BaseUrl` | empty (`BaseUrl` `https://accept.paymob.com`) | Paymob Accept credentials; **secrets, never commit** |
+| `WhatsApp__Provider` | `Mock` | `Mock` (delivers nothing, masked log + outbox) or `Meta` (WhatsApp Cloud API); startup fails if Meta is chosen without its keys. Outside Development, Mock is refused unless `WhatsApp__AllowMock=true`: sends are then recorded `Failed` ("not configured") |
+| `WhatsApp__AllowMock` | `false` | staging demos only |
+| `WhatsApp__PhoneNumberId`, `WhatsApp__AccessToken` | empty | Meta Cloud API sender and token (**secret**) |
+| `WhatsApp__ApiBaseUrl`, `LanguageCodeAr`, `LanguageCodeEn` | `https://graph.facebook.com/v21.0`, `ar`, `en` | Cloud API base and template language codes |
+| `WhatsApp__Templates__confirmed`, `cancelled`, `reminder`, `waitlist`, `review`, `recall` | empty (built-in names such as `appointment_confirmed`) | approved template name per message kind; body parameters are `{{1}}` patient, `{{2}}` doctor, `{{3}}` date/time |
+| `Video__Provider` | `Jitsi` | `Jitsi` or `Mock` |
+| `Video__Jitsi__BaseUrl` | `https://meet.jit.si` | Jitsi server; rooms get unguessable names. **The public meet.jit.si is for demos only (no moderator role, no expiry): production needs a self-hosted Jitsi or JaaS.** The join link is only handed out inside the 15 min before to 30 min after window; JWT-based moderation (a signed token per join) is not built yet |
+| `Jobs__Enabled` | `true` | runs the maintenance jobs (waiting-list expiry, review prompts, recall) in their own service, independent of `Reminders__Enabled` |
+| `Jobs__ReviewPromptDelayMinutes` | 30 | delay after Completed before the "rate your visit" message |
+| `Jobs__RecallHour` | 10 | clinic-local hour the daily recall runner starts |
 
 ## Clinic config and features
 
@@ -76,10 +93,45 @@ Public endpoints (anonymous):
 | `pushReminders` | confirmation and reminder pushes are skipped (a clinic cancellation is still pushed) |
 | `smsNotifications` | when on, patients without a device token (or with pushes off) get SMS, in addition to `Sms__NotificationsEnabled` |
 | `multiBranch` | admin cannot create a second clinic: 403 `FEATURE_DISABLED` (the first is allowed) |
+| `holidayCalendar` | holiday endpoints 403; no slots are hidden, booking is never blocked, `closedDates` is empty |
+| `workingHoursTemplates` | template CRUD and `slots/apply-template` 403 |
+| `waitingList` | waiting-list endpoints 403; no waiting-list notifications |
+| `familyAccounts` | `/me/family` 403; `familyMemberId` on booking is ignored |
+| `whatsappReminders` | `dashboard/messages` 403; nothing is sent over WhatsApp (the outbox still logs push and SMS) |
+| `onlinePayments` | pay, payment and webhook endpoints 403; price fields stay in the DTOs |
+| `insurance` | insurance endpoints 403; `insurance` on booking ignored; `insuranceProviders` is `[]` |
+| `patientRecords` | patients and records endpoints 403 |
+| `reviews` | review endpoints 403; `rating` is `null`, `canReview` false; no review prompt job |
+| `promotions` | promotion and coupon endpoints 403; `couponCode` on booking ignored |
+| `recallCampaigns` | campaign endpoints 403; the daily runner does nothing |
+| `reports` | report endpoints 403 |
+| `videoConsultation` | video endpoints 403; `mode` on booking ignored (always `InPerson`) |
 
 A disabled feature returns `application/problem+json` with `code: "FEATURE_DISABLED"`, `feature: "<key>"` and a title localized by `Accept-Language`.
 
 **Console pull.** When `Console__Url`, `Console__ClinicId` and `Console__ApiKey` are all set, a background service calls `GET {Url}/api/v1/clinics/{clinicId}/runtime-config` (header `X-Clinic-Key`) every `Console__RefreshSeconds` and expects `{ "features": { ... }, "updatedAt": "..." }`. Unknown keys are ignored and missing keys take the `clinic.config.json` default. Each good response is saved in the single-row `feature_state` table, so a restart while the console is down keeps the last switches. A failing console (timeout, error status, bad JSON) is logged and never affects the API: the previous switches stay in force.
+
+## Phase 2 features
+
+The 13 Phase 2 features are specified in [docs/FEATURES-PHASE2.md](docs/FEATURES-PHASE2.md) (shared API contract; the "Deviations and notes" section at its end lists where this backend differs or clarifies). All are off by default and every endpoint is gated with `[RequireFeature]`; feature-only booking fields are ignored while a feature is off.
+
+**Providers.** Each external integration is an interface with a config-selected implementation (typed `HttpClient`, no secrets in the repo, unknown or incomplete settings fail at startup):
+
+| Interface | Implementations | Selected by |
+|---|---|---|
+| `IPaymentProvider` | `Mock`, `Paymob` | `Payments__Provider` |
+| `IWhatsAppSender` | `Mock`, `Meta` | `WhatsApp__Provider` |
+| `IVideoProvider` | `Jitsi`, `Mock` | `Video__Provider` |
+
+*Paymob setup.* In the Paymob dashboard set the transaction **processed callback** to `https://<api>/api/v1/payments/webhook/paymob` (signed with HMAC-SHA512 over the documented 20 fields, sent as the `hmac` query parameter; wrong or missing signatures answer 401) and the transaction **response callback** to `https://<api>/api/v1/payments/return` (redirects the browser to the `returnUrl` given to `POST /appointments/{id}/pay`, adding `paymentId` and `status`). Webhooks are idempotent: a replay or a late failure never changes a Paid or Refunded payment. Cancelling a paid appointment refunds through `void_refund/refund`.
+
+*WhatsApp (Meta).* Create and approve one template per message kind (see the `WhatsApp__Templates__*` keys); the sender posts `type: template` messages to `{ApiBaseUrl}/{PhoneNumberId}/messages`. Every outbound message (push, SMS, WhatsApp) is written to the `outbound_messages` outbox, shown at `GET /api/v1/dashboard/messages`.
+
+*Background jobs* (own service, same interval `Reminders__IntervalMinutes`, switch `Jobs__Enabled`): waiting-list expiry, review prompts (once, `Jobs__ReviewPromptDelayMinutes` after Completed) and the daily recall runner (`Jobs__RecallHour` clinic time). All claim their work with atomic conditional updates, so several API instances never double-send.
+
+*Egyptian holidays.* `POST /dashboard/holidays/import-egypt` uses a built-in table: fixed-date holidays are computed for any year; moveable ones (Islamic, Sham El-Nessim) are bundled for 2026-2028 only. **The moveable dates are estimates** (they depend on moon sighting and government announcements); clinics should review the imported rows and add or delete days manually.
+
+*Records attachments.* Files go through the storage abstraction under `records/` and are served from the public `/uploads` path by an unguessable file name. Treat the link as a bearer secret and keep `Storage__Path` private-bucket-backed when object storage arrives (M6); do not rely on it for strong confidentiality yet.
 
 ## Test
 
@@ -103,5 +155,5 @@ Use a non-Development environment so the app does not migrate and seed while the
 
 ## Layout
 
-- `src/Moonlight.Api` — the API: `Features/` (Auth, Me, Catalog, Appointments, Dashboard, Admin, Notifications, Flags for features and the console pull, Branding), `Domain/` (entities, `SlotGenerator`, `AppointmentRules`), `Infrastructure/` (DbContext, migrations, JWT, SMS, FCM, storage, dev seed), `Common/` (problem details, paging, rate limiting, clinic config)
+- `src/Moonlight.Api` — the API: `Features/` (Auth, Me, Catalog, Appointments, Dashboard, Admin, Notifications, Flags for features and the console pull, Branding, plus one folder per Phase 2 feature: Holidays, Templates, WaitingList, Family, Payments, Insurance, Records, Reviews, Promotions, Recall, Reports, Video), `Domain/` (entities, `SlotGenerator`, `AppointmentRules`), `Infrastructure/` (DbContext, migrations, JWT, SMS, FCM, WhatsApp, Payments, Video, storage, dev seed), `Common/` (problem details, paging, rate limiting, clinic config)
 - `tests/Moonlight.Tests` — unit tests (slot generator, transition rules, phone parsing) and integration tests against Postgres

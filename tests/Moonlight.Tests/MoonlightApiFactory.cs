@@ -44,10 +44,14 @@ public sealed class MoonlightApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Default", _connectionString);
         builder.UseSetting("Jwt:Key", TestJwtKey);
         builder.UseSetting("Reminders:Enabled", "false");
+        builder.UseSetting("Jobs:Enabled", "false");
+        builder.UseSetting("Payments:AllowMock", "true");
+        builder.UseSetting("WhatsApp:AllowMock", "true");
         builder.UseSetting("RateLimits:OtpPerPhonePerMinute", "1000");
         builder.UseSetting("RateLimits:OtpPerPhonePerHour", "1000");
         builder.UseSetting("RateLimits:OtpPerIpPerHour", "100000");
         builder.UseSetting("Storage:Path", Path.Combine(Path.GetTempPath(), "moonlight-test-uploads"));
+        builder.UseSetting("Storage:RecordsPath", Path.Combine(Path.GetTempPath(), "moonlight-test-records"));
         if (_environment != "Production")
         {
             builder.UseSetting("Auth:FixedOtp", FixedOtp);

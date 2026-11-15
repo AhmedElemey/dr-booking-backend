@@ -12,7 +12,9 @@ public sealed record ManagedDoctorDto(
     string? PhotoUrl,
     int? YearsExperience,
     decimal? ConsultationFeeEgp,
-    bool IsPublished);
+    bool IsPublished,
+    bool OffersVideo,
+    IReadOnlyList<Features.Insurance.InsuranceProviderRefDto> InsuranceProviders);
 
 public sealed record UpdateDoctorDto(
     string? NameAr,
@@ -22,7 +24,8 @@ public sealed record UpdateDoctorDto(
     int? YearsExperience,
     decimal? ConsultationFeeEgp,
     Guid? SpecialtyId,
-    bool? IsPublished);
+    bool? IsPublished,
+    bool? OffersVideo = null);
 
 public sealed record PhotoUrlDto(string PhotoUrl);
 

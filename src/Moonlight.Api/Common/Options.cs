@@ -70,6 +70,12 @@ public sealed class StorageOptions
     public string Path { get; set; } = "uploads";
 
     public string RequestPath { get; set; } = "/uploads";
+
+    // Private folder for patient record attachments. Never served as static files; only through the authorized endpoints.
+    public string RecordsPath { get; set; } = "private-records";
+
+    // Public base URL of this API, prefixed to attachment links. Empty: links are relative paths (the Host header is never trusted).
+    public string PublicBaseUrl { get; set; } = "";
 }
 
 public sealed class RemindersOptions
@@ -79,4 +85,95 @@ public sealed class RemindersOptions
     public bool Enabled { get; set; } = true;
 
     public int IntervalMinutes { get; set; } = 5;
+}
+
+public sealed class PaymobOptions
+{
+    public string BaseUrl { get; set; } = "https://accept.paymob.com";
+
+    public string ApiKey { get; set; } = "";
+
+    public string IntegrationId { get; set; } = "";
+
+    public string IframeId { get; set; } = "";
+
+    // Used to verify transaction callbacks (HMAC-SHA512). Never commit it; set Payments__Paymob__HmacSecret.
+    public string HmacSecret { get; set; } = "";
+}
+
+public sealed class PaymentsOptions
+{
+    public const string Section = "Payments";
+
+    // "Mock" (default; a backend-served checkout page) or "Paymob". Outside Development the Mock provider is only usable
+    // when AllowMock is true; otherwise online payments answer 409 PAYMENT_NOT_ALLOWED ("not configured").
+    public string Provider { get; set; } = "Mock";
+
+    // Staging demos only: lets the unsigned Mock provider run outside Development. Never set it in production.
+    public bool AllowMock { get; set; }
+
+    // Public base URL of this API, used to build checkout links. Required outside Development (Mock only falls back to the request host in Development).
+    public string PublicBaseUrl { get; set; } = "";
+
+    // Hosts a returnUrl may point to (in addition to the clinic website domain and the mobile app scheme).
+    public string[] ReturnUrlHosts { get; set; } = [];
+
+    public PaymobOptions Paymob { get; set; } = new();
+}
+
+public sealed class WhatsAppOptions
+{
+    public const string Section = "WhatsApp";
+
+    // "Mock" (default; delivers nothing) or "Meta" (WhatsApp Cloud API). Outside Development the Mock sender is only usable
+    // when AllowMock is true; otherwise every WhatsApp message is recorded in the outbox as Failed ("not configured").
+    public string Provider { get; set; } = "Mock";
+
+    // Staging demos only: lets the Mock sender run outside Development.
+    public bool AllowMock { get; set; }
+
+    public string ApiBaseUrl { get; set; } = "https://graph.facebook.com/v21.0";
+
+    public string PhoneNumberId { get; set; } = "";
+
+    public string AccessToken { get; set; } = "";
+
+    // Meta language codes of the approved templates.
+    public string LanguageCodeAr { get; set; } = "ar";
+
+    public string LanguageCodeEn { get; set; } = "en";
+
+    // Approved template name per message kind (keys confirmed, cancelled, reminder, waitlist, review, recall; empty keeps the built-in default name).
+    public Dictionary<string, string> Templates { get; set; } = [];
+}
+
+public sealed class JitsiOptions
+{
+    // The public meet.jit.si server is for demos only: rooms have no moderator role and no expiry. Production needs a
+    // self-hosted Jitsi server (with JWT auth) or JaaS; set Video:Jitsi:BaseUrl to it.
+    public string BaseUrl { get; set; } = "https://meet.jit.si";
+}
+
+public sealed class VideoOptions
+{
+    public const string Section = "Video";
+
+    // "Jitsi" (default) or "Mock".
+    public string Provider { get; set; } = "Jitsi";
+
+    public JitsiOptions Jitsi { get; set; } = new();
+}
+
+public sealed class BackgroundJobsOptions
+{
+    public const string Section = "Jobs";
+
+    // The "rate your visit" prompt goes out this long after an appointment is marked Completed.
+    public int ReviewPromptDelayMinutes { get; set; } = 30;
+
+    // Recurring recall campaigns run once a day at this clinic-local hour.
+    public int RecallHour { get; set; } = 10;
+
+    // Runs waiting-list expiry, review prompts and recurring recall independently of Reminders:Enabled.
+    public bool Enabled { get; set; } = true;
 }

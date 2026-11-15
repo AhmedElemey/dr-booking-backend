@@ -193,7 +193,7 @@ public sealed class AuthService(
         });
         await db.SaveChangesAsync(ct);
 
-        var dto = new UserDto(user.Id, user.Phone, user.FullName, user.Role, user.PreferredLanguage, clinicId, doctorId);
+        var dto = new UserDto(user.Id, user.Phone, user.FullName, user.Role, user.PreferredLanguage, clinicId, doctorId, user.WhatsAppOptIn, user.MarketingOptIn);
         return new AuthResponse(tokens.CreateAccessToken(user, clinicId, doctorId), refresh, tokens.AccessTokenSeconds, isNew, dto);
     }
 }

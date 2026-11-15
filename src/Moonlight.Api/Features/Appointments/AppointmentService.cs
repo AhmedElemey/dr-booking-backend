@@ -4,7 +4,12 @@ using Microsoft.Extensions.Options;
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
 using Moonlight.Api.Features.Dashboard;
+using Moonlight.Api.Features.Flags;
+using Moonlight.Api.Features.Holidays;
 using Moonlight.Api.Features.Notifications;
+using Moonlight.Api.Features.Payments;
+using Moonlight.Api.Features.Promotions;
+using Moonlight.Api.Features.WaitingList;
 using Moonlight.Api.Infrastructure;
 
 namespace Moonlight.Api.Features.Appointments;
@@ -18,8 +23,14 @@ public sealed class AppointmentService(
     DashboardScope scope,
     AppointmentMapper mapper,
     INotificationService notifications,
+    FeatureService features,
+    HolidayService holidays,
+    WaitingListService waitingList,
+    CouponService coupons,
+    PaymentService payments,
     TimeProvider clock,
-    IOptions<BookingOptions> bookingOptions)
+    IOptions<BookingOptions> bookingOptions,
+    ILogger<AppointmentService> logger)
 {
     private const string ActiveSlotIndex = "ux_appointments_active_slot";
 
@@ -34,10 +45,13 @@ public sealed class AppointmentService(
         var slotId = RequireSlotId(request.SlotId);
         ValidateNote(request.PatientNote);
         var slot = await FindBookableSlotAsync(slotId, patient: true, ct);
-        await ValidateServiceAsync(request.ServiceId, slot.DoctorId, ct);
+        await EnsureClinicOpenAsync(slot, ct);
+        var service = await ValidateServiceAsync(request.ServiceId, slot.DoctorId, ct);
+        var extras = await BuildExtrasAsync(slot, service, current.Id, request, ct);
 
         var appointment = await CreateAsync(
-            slot, current.Id, request.ServiceId, request.PatientNote, createdBy: current.Id, enforceLimits: true, ct);
+            slot, current.Id, request.ServiceId, request.PatientNote, createdBy: current.Id, enforceLimits: true, extras, ct);
+        await waitingList.MarkBookedAsync(current.Id, extras.FamilyMemberId, slot.DoctorId, slot.StartsAt, ct);
         await notifications.AppointmentConfirmedAsync(appointment.Id, ct);
         return await GetPatientAsync(appointment.Id, ct);
     }
@@ -161,11 +175,13 @@ public sealed class AppointmentService(
         ValidateNote(request.PatientNote);
 
         var slot = await FindBookableSlotAsync(slotId, patient: false, ct);
-        await ValidateServiceAsync(request.ServiceId, slot.DoctorId, ct);
+        await EnsureClinicOpenAsync(slot, ct);
+        var service = await ValidateServiceAsync(request.ServiceId, slot.DoctorId, ct);
         var patient = await FindOrCreatePatientAsync(phone, request.PatientName!.Trim(), ct);
+        var extras = await BuildExtrasAsync(slot, service, patient.Id, new BookAppointmentDto(slotId, request.ServiceId, request.PatientNote, null, request.Insurance, null, request.Mode), ct);
 
         var appointment = await CreateAsync(
-            slot, patient.Id, request.ServiceId, request.PatientNote, createdBy: current.Id, enforceLimits: false, ct);
+            slot, patient.Id, request.ServiceId, request.PatientNote, createdBy: current.Id, enforceLimits: false, extras, ct);
         await notifications.AppointmentConfirmedAsync(appointment.Id, ct);
         return await GetDashboardAsync(appointment.Id, ct);
     }
@@ -217,12 +233,26 @@ public sealed class AppointmentService(
 
         appointment.Status = target;
         appointment.UpdatedAt = Now;
+        if (target == AppointmentStatus.Completed)
+        {
+            appointment.CompletedAt = Now;
+        }
+
         await SaveTransitionAsync(ct);
         return await GetDashboardAsync(id, ct);
     }
 
+    // Phase 2 booking details, already validated: ignored fields stay at their defaults.
+    private sealed record BookingExtras(
+        Guid? FamilyMemberId,
+        AppointmentMode Mode,
+        Guid? InsuranceProviderId,
+        string? InsuranceMemberNumber,
+        decimal? Price,
+        CouponEvaluation? Coupon);
+
     private async Task<Appointment> CreateAsync(
-        Slot slot, Guid patientId, Guid? serviceId, string? note, Guid createdBy, bool enforceLimits, CancellationToken ct)
+        Slot slot, Guid patientId, Guid? serviceId, string? note, Guid createdBy, bool enforceLimits, BookingExtras extras, CancellationToken ct)
     {
         var now = Now;
         var minStart = enforceLimits ? now.AddMinutes(Booking.MinLeadMinutes) : now;
@@ -233,13 +263,21 @@ public sealed class AppointmentService(
         await ReserveSlotAsync(slot.Id, minStart, ct);
         if (enforceLimits)
         {
-            await EnforceLimitsAsync(patientId, slot, excludeAppointmentId: null, checkTotal: true, ct);
+            await EnforceLimitsAsync(patientId, extras.FamilyMemberId, slot, excludeAppointmentId: null, checkTotal: true, ct);
         }
 
         var appointment = new Appointment
         {
             SlotId = slot.Id,
             PatientUserId = patientId,
+            FamilyMemberId = extras.FamilyMemberId,
+            Mode = extras.Mode,
+            PriceEgp = extras.Price,
+            DiscountEgp = extras.Coupon?.DiscountEgp ?? 0m,
+            CouponId = extras.Coupon?.Coupon?.Id,
+            InsuranceProviderId = extras.InsuranceProviderId,
+            InsuranceMemberNumber = extras.InsuranceMemberNumber,
+            InsuranceStatus = extras.InsuranceProviderId is null ? null : InsuranceStatus.Pending,
             ServiceId = serviceId,
             PatientNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             CreatedByUserId = createdBy,
@@ -248,6 +286,11 @@ public sealed class AppointmentService(
             UpdatedAt = now,
         };
         db.Appointments.Add(appointment);
+        if (extras.Coupon is { Coupon: { } coupon } evaluation)
+        {
+            await coupons.RedeemAsync(coupon, appointment.Id, patientId, evaluation.DiscountEgp, ct);
+        }
+
         try
         {
             await db.SaveChangesAsync(ct);
@@ -269,6 +312,8 @@ public sealed class AppointmentService(
             throw ApiException.Validation("slotId", "The new slot must belong to the same doctor.");
         }
 
+        await EnsureClinicOpenAsync(target, ct);
+
         var now = Now;
         var minStart = patient ? now.AddMinutes(Booking.MinLeadMinutes) : now;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -276,7 +321,7 @@ public sealed class AppointmentService(
         await ReserveSlotAsync(targetId, minStart, ct);
         if (patient)
         {
-            await EnforceLimitsAsync(appointment.PatientUserId, target, appointment.Id, checkTotal: false, ct);
+            await EnforceLimitsAsync(appointment.PatientUserId, appointment.FamilyMemberId, target, appointment.Id, checkTotal: false, ct);
         }
 
         appointment.SlotId = targetId;
@@ -285,6 +330,7 @@ public sealed class AppointmentService(
         oldSlot.Status = SlotStatus.Open;
         await SaveTransitionAsync(ct);
         await tx.CommitAsync(ct);
+        await waitingList.NotifySlotsOpenedAsync(oldSlot.DoctorId, [oldSlot.StartsAt], ct);
     }
 
     private async Task CancelAsync(Appointment appointment, Slot slot, CancelledBy by, string? reason, CancellationToken ct)
@@ -294,7 +340,25 @@ public sealed class AppointmentService(
         appointment.CancelReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         appointment.UpdatedAt = Now;
         slot.Status = SlotStatus.Open;
-        await SaveTransitionAsync(ct);
+
+        // The status change and the coupon release commit together; the side effects after it are independent of each other
+        // (a failing one is logged and never turns a done cancellation into an error or skips the others).
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await SaveTransitionAsync(ct);
+            await coupons.ReleaseAsync(appointment.Id, ct);
+            await tx.CommitAsync(ct);
+        }
+
+        await payments.RefundOnCancelAsync(appointment.Id, ct);
+        try
+        {
+            await waitingList.NotifySlotsOpenedAsync(slot.DoctorId, [slot.StartsAt], ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Waiting-list notification after cancelling appointment {AppointmentId} failed.", appointment.Id);
+        }
     }
 
     // Optimistic concurrency (xmin): of two simultaneous transitions on one appointment, the loser gets INVALID_TRANSITION.
@@ -335,10 +399,11 @@ public sealed class AppointmentService(
     private Task LockPatientAsync(Guid patientId, CancellationToken ct) =>
         db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({patientId.ToString()}, 0))", ct);
 
-    private async Task EnforceLimitsAsync(Guid patientId, Slot slot, Guid? excludeAppointmentId, bool checkTotal, CancellationToken ct)
+    // Limits count per person: the account owner (familyMemberId null) and each family member have their own.
+    private async Task EnforceLimitsAsync(Guid patientId, Guid? familyMemberId, Slot slot, Guid? excludeAppointmentId, bool checkTotal, CancellationToken ct)
     {
         var now = Now;
-        var confirmed = db.Appointments.Where(a => a.PatientUserId == patientId && a.Status == AppointmentStatus.Confirmed);
+        var confirmed = db.Appointments.Where(a => a.PatientUserId == patientId && a.FamilyMemberId == familyMemberId && a.Status == AppointmentStatus.Confirmed);
         if (excludeAppointmentId is { } excluded)
         {
             confirmed = confirmed.Where(a => a.Id != excluded);
@@ -373,18 +438,92 @@ public sealed class AppointmentService(
         return await query.AsNoTracking().FirstOrDefaultAsync(s => s.Id == slotId, ct) ?? throw ApiException.NotFound();
     }
 
-    private async Task ValidateServiceAsync(Guid? serviceId, Guid doctorId, CancellationToken ct)
+    private async Task<Service?> ValidateServiceAsync(Guid? serviceId, Guid doctorId, CancellationToken ct)
     {
         if (serviceId is not { } id)
+        {
+            return null;
+        }
+
+        return await db.Services.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id && s.DoctorId == doctorId && s.IsActive, ct)
+            ?? throw ApiException.Validation("serviceId", "The service does not exist for this doctor.");
+    }
+
+    // Clinic holidays close the doctor's calendar (holidayCalendar feature): booking into one is CLINIC_CLOSED.
+    private async Task EnsureClinicOpenAsync(Slot slot, CancellationToken ct)
+    {
+        if (!features.IsEnabled(FeatureKeys.HolidayCalendar))
         {
             return;
         }
 
-        var valid = await db.Services.AnyAsync(s => s.Id == id && s.DoctorId == doctorId && s.IsActive, ct);
-        if (!valid)
+        var timezone = await db.Clinics.Where(c => c.Id == slot.ClinicId).Select(c => c.Timezone).FirstAsync(ct);
+        var date = ClinicTime.LocalDate(slot.StartsAt, ClinicTime.FindZone(timezone));
+        if (await holidays.FindAsync(slot.ClinicId, date, ct) is { } holiday)
         {
-            throw ApiException.Validation("serviceId", "The service does not exist for this doctor.");
+            throw new ApiException(
+                ErrorCodes.ClinicClosed,
+                extensions: new Dictionary<string, object?> { ["date"] = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), ["holiday"] = holiday.NameEn });
         }
+    }
+
+    // Validates the feature-gated booking fields. Fields of a feature that is switched off are ignored, never rejected.
+    private async Task<BookingExtras> BuildExtrasAsync(Slot slot, Service? service, Guid patientId, BookAppointmentDto request, CancellationToken ct)
+    {
+        var doctor = await db.Doctors.AsNoTracking().Include(d => d.Clinic).FirstAsync(d => d.Id == slot.DoctorId, ct);
+
+        Guid? familyMemberId = null;
+        if (features.IsEnabled(FeatureKeys.FamilyAccounts) && request.FamilyMemberId is { } memberId)
+        {
+            if (!await db.FamilyMembers.AnyAsync(f => f.Id == memberId && f.OwnerUserId == patientId && f.DeletedAt == null, ct))
+            {
+                throw ApiException.Validation("familyMemberId", "The family member does not exist.");
+            }
+
+            familyMemberId = memberId;
+        }
+
+        var mode = AppointmentMode.InPerson;
+        if (features.IsEnabled(FeatureKeys.VideoConsultation) && request.Mode == AppointmentMode.Video)
+        {
+            if (!doctor.OffersVideo)
+            {
+                throw ApiException.Unprocessable("mode", "This doctor does not offer video consultations.");
+            }
+
+            mode = AppointmentMode.Video;
+        }
+
+        Guid? insuranceProviderId = null;
+        string? memberNumber = null;
+        if (features.IsEnabled(FeatureKeys.Insurance) && request.Insurance is { } insurance)
+        {
+            new ValidationErrors()
+                .Require(insurance.ProviderId is not null, "insurance.providerId", "providerId is required.")
+                .RequireText(insurance.MemberNumber, "insurance.memberNumber", 100)
+                .ThrowIfAny();
+            var accepted = await db.DoctorInsuranceProviders.AnyAsync(
+                d => d.DoctorId == doctor.Id && d.InsuranceProviderId == insurance.ProviderId && d.InsuranceProvider!.IsActive, ct);
+            if (!accepted)
+            {
+                throw ApiException.Unprocessable("insurance.providerId", "The doctor does not accept this insurance provider.");
+            }
+
+            insuranceProviderId = insurance.ProviderId;
+            memberNumber = insurance.MemberNumber!.Trim();
+        }
+
+        CouponEvaluation? evaluation = null;
+        if (features.IsEnabled(FeatureKeys.Promotions) && !string.IsNullOrWhiteSpace(request.CouponCode))
+        {
+            evaluation = await coupons.EvaluateAsync(request.CouponCode, doctor, service, patientId, ct);
+            if (!evaluation.Valid)
+            {
+                throw CouponService.Invalid(evaluation.Reason!);
+            }
+        }
+
+        return new BookingExtras(familyMemberId, mode, insuranceProviderId, memberNumber, CouponService.PriceOf(doctor, service), evaluation);
     }
 
     private async Task<User> FindOrCreatePatientAsync(string phone, string name, CancellationToken ct)

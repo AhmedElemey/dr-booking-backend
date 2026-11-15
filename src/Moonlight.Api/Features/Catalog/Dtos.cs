@@ -1,3 +1,7 @@
+using Moonlight.Api.Features.Holidays;
+using Moonlight.Api.Features.Insurance;
+using Moonlight.Api.Features.Reviews;
+
 namespace Moonlight.Api.Features.Catalog;
 
 public sealed record SpecialtyDto(Guid Id, string Name);
@@ -12,7 +16,10 @@ public sealed record DoctorSummaryDto(
     SpecialtyDto Specialty,
     ClinicSummaryDto Clinic,
     int? YearsExperience,
-    decimal? ConsultationFeeEgp);
+    decimal? ConsultationFeeEgp,
+    bool OffersVideo,
+    IReadOnlyList<InsuranceProviderRefDto> InsuranceProviders,
+    RatingDto? Rating);
 
 public sealed record ClinicDetailDto(
     Guid Id,
@@ -36,10 +43,13 @@ public sealed record DoctorProfileDto(
     ClinicDetailDto Clinic,
     int? YearsExperience,
     decimal? ConsultationFeeEgp,
-    IReadOnlyList<PublicServiceDto> Services);
+    IReadOnlyList<PublicServiceDto> Services,
+    bool OffersVideo,
+    IReadOnlyList<InsuranceProviderRefDto> InsuranceProviders,
+    RatingDto? Rating);
 
 public sealed record PublicSlotDto(Guid Id, DateTime StartsAt, DateTime EndsAt, string Local);
 
 public sealed record SlotDayDto(DateOnly Date, IReadOnlyList<PublicSlotDto> Slots);
 
-public sealed record DoctorSlotsDto(Guid DoctorId, string Timezone, IReadOnlyList<SlotDayDto> Days);
+public sealed record DoctorSlotsDto(Guid DoctorId, string Timezone, IReadOnlyList<SlotDayDto> Days, IReadOnlyList<ClosedDateDto> ClosedDates);

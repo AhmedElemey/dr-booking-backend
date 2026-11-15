@@ -36,4 +36,15 @@ public static partial class PhoneNumber
         TryNormalize(input, out var e164)
             ? e164
             : throw ApiException.Validation(field, "Enter a valid Egyptian mobile number, for example 01012345678.");
+
+    /// <summary>Hides the middle of a number for logs: +201012345678 becomes +2010****78.</summary>
+    public static string Mask(string? phone)
+    {
+        if (string.IsNullOrEmpty(phone) || phone.Length < 8)
+        {
+            return "****";
+        }
+
+        return phone[..5] + "****" + phone[^2..];
+    }
 }

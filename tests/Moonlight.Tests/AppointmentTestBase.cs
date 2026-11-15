@@ -18,6 +18,9 @@ public abstract class AppointmentTestBase(PostgresFixture db, Dictionary<string,
     // Tests that touch global state (the reminder job claims rows of every patient) get a database of their own per test.
     protected virtual bool IsolatedDatabase => false;
 
+    // Lets a test swap services (e.g. an HTTP handler) before the host starts.
+    protected virtual Action<Microsoft.Extensions.DependencyInjection.IServiceCollection>? ConfigureServices => null;
+
     protected TestWorld World { get; private set; } = null!;
 
     protected Clinic Clinic { get; private set; } = null!;
@@ -41,7 +44,7 @@ public abstract class AppointmentTestBase(PostgresFixture db, Dictionary<string,
         }
 
         ConnectionString = (_own ?? _shared).ConnectionString;
-        Factory = new MoonlightApiFactory(ConnectionString, settings: settings);
+        Factory = new MoonlightApiFactory(ConnectionString, settings: settings, configureServices: ConfigureServices);
         World = new TestWorld(Factory);
         Clinic = await World.NewClinicAsync();
         Doctor = await World.NewDoctorAsync(Clinic);

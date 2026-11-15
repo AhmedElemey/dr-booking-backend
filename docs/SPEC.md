@@ -2,6 +2,8 @@
 
 Dentist reservation platform. Patients find a dentist and book a slot (mobile app or website); doctors and clinic staff manage appointments in a dashboard. Payment is at the clinic.
 
+> **Phase 2.** The 13 optional features (video, waiting list, family accounts, WhatsApp, online payments, insurance, holidays, working-hours templates, patient records, reviews, promotions, recall campaigns, reports) are specified in [FEATURES-PHASE2.md](FEATURES-PHASE2.md). They are all off by default and gated by feature switches; with them off the MVP behaviour below is unchanged (online payment, when enabled, is optional: booking stays instantly Confirmed).
+
 > **ASSUMPTION TO CONFIRM — Market: Egypt.** Currency EGP (display only), Arabic + English with RTL, phone-number-first sign-up (Egyptian mobile numbers, E.164 `+20…`), clinic timezone `Africa/Cairo`. Everything below assumes this; see Open Questions #1.
 
 ## Decided by the product owner (fixed)

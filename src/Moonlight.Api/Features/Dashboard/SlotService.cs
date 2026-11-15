@@ -4,12 +4,16 @@ using Microsoft.EntityFrameworkCore;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
+using Moonlight.Api.Features.Flags;
+using Moonlight.Api.Features.Holidays;
+using Moonlight.Api.Features.Templates;
+using Moonlight.Api.Features.WaitingList;
 using Moonlight.Api.Infrastructure;
 
 namespace Moonlight.Api.Features.Dashboard;
 
 // Slot authoring for doctors / staff (spec section 3, "Slots: lifecycle and authoring").
-public sealed class SlotService(MoonlightDbContext db, DashboardScope scope, TimeProvider clock)
+public sealed class SlotService(MoonlightDbContext db, DashboardScope scope, TimeProvider clock, HolidayService holidays, WaitingListService waitingList)
 {
     public const int MaxCalendarDays = 31;
     public const int MaxDeleteRangeDays = SlotGenerator.MaxDays;
@@ -67,6 +71,7 @@ public sealed class SlotService(MoonlightDbContext db, DashboardScope scope, Tim
         var slot = NewSlot(doctor, startsAt, endsAt);
         db.Slots.Add(slot);
         await SaveSlotsAsync(ct);
+        await waitingList.NotifySlotsOpenedAsync(doctor.Id, [slot.StartsAt], ct);
         return ToDto(slot, ClinicTime.FindZone(doctor.Clinic!.Timezone), null);
     }
 
@@ -89,19 +94,57 @@ public sealed class SlotService(MoonlightDbContext db, DashboardScope scope, Tim
             request.StartTime!.Value,
             request.EndTime!.Value,
             request.SlotMinutes!.Value);
+        return await GenerateAsync(doctor, [spec], ct);
+    }
+
+    // Template: every rule of the template expands like a bulk request over the same date range.
+    public async Task<BulkSlotsResultDto> ApplyTemplateAsync(Guid doctorId, ApplyTemplateDto request, CancellationToken ct)
+    {
+        var doctor = await scope.RequireDoctorAsync(doctorId, ct);
+        new ValidationErrors()
+            .Require(request.TemplateId is not null, "templateId", "templateId is required.")
+            .Require(request.FromDate is not null, "fromDate", "fromDate is required.")
+            .Require(request.ToDate is not null, "toDate", "toDate is required.")
+            .ThrowIfAny();
+        var clinicId = scope.ClinicId;
+        var template = await db.WorkingHoursTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == request.TemplateId && t.ClinicId == clinicId, ct)
+            ?? throw ApiException.NotFound();
+
+        var specs = template.Rules.Select(r => new BulkSlotSpec(
+            request.FromDate!.Value,
+            request.ToDate!.Value,
+            [r.DayOfWeek],
+            TimeOnly.ParseExact(r.Start, "HH:mm", CultureInfo.InvariantCulture),
+            TimeOnly.ParseExact(r.End, "HH:mm", CultureInfo.InvariantCulture),
+            template.SlotMinutes)).ToList();
+        return await GenerateAsync(doctor, specs, ct);
+    }
+
+    // Shared by bulk creation and templates: past, overlapping and holiday slots are skipped and reported.
+    private async Task<BulkSlotsResultDto> GenerateAsync(Doctor doctor, IReadOnlyList<BulkSlotSpec> specs, CancellationToken ct)
+    {
         var zone = ClinicTime.FindZone(doctor.Clinic!.Timezone);
+        var from = specs.Min(s => s.FromDate);
+        var to = specs.Max(s => s.ToDate);
 
         // Existing slots around the requested window, to detect overlaps (one day of slack for DST / timezone edges).
-        var (windowStart, windowEnd) = ClinicTime.DayRangeUtc(spec.FromDate.AddDays(-1), spec.ToDate.AddDays(1), zone);
+        var (windowStart, windowEnd) = ClinicTime.DayRangeUtc(from.AddDays(-1), to.AddDays(1), zone);
         var existing = await db.Slots.AsNoTracking()
-            .Where(s => s.DoctorId == doctorId && s.StartsAt < windowEnd && s.EndsAt > windowStart)
+            .Where(s => s.DoctorId == doctor.Id && s.StartsAt < windowEnd && s.EndsAt > windowStart)
             .Select(s => new TimeRange(s.StartsAt, s.EndsAt))
             .ToListAsync(ct);
+        var closed = (await holidays.ClosedAsync(doctor.ClinicId, from, to, ct)).Keys.ToHashSet();
 
-        SlotGenerationResult result;
+        var created = new List<TimeRange>();
+        var skipped = new List<SkippedSlot>();
         try
         {
-            result = SlotGenerator.Generate(spec, zone, Now, existing);
+            foreach (var spec in specs)
+            {
+                var result = SlotGenerator.Generate(spec, zone, Now, [.. existing, .. created], closed);
+                created.AddRange(result.Created);
+                skipped.AddRange(result.Skipped);
+            }
         }
         catch (SlotGenerationException ex)
         {
@@ -109,15 +152,16 @@ public sealed class SlotService(MoonlightDbContext db, DashboardScope scope, Tim
         }
 
         var now = Now;
-        db.Slots.AddRange(result.Created.Select(r => NewSlot(doctor, r.StartsAt, r.EndsAt, now)));
+        db.Slots.AddRange(created.Select(r => NewSlot(doctor, r.StartsAt, r.EndsAt, now)));
         await SaveSlotsAsync(ct);
+        await waitingList.NotifySlotsOpenedAsync(doctor.Id, created.Select(r => r.StartsAt).ToList(), ct);
 
-        var skipped = result.Skipped.Select(s => new SkippedSlotDto(
+        var dtos = skipped.Select(s => new SkippedSlotDto(
             s.StartsAt,
             s.EndsAt,
             s.LocalStart.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
-            s.Reason.ToString())).ToList();
-        return new BulkSlotsResultDto(result.Created.Count, skipped.Count, skipped);
+            s.Reason == SkipReason.Holiday ? "holiday" : s.Reason.ToString())).ToList();
+        return new BulkSlotsResultDto(created.Count, dtos.Count, dtos);
     }
 
     public async Task<ManagedSlotDto> BlockAsync(Guid doctorId, Guid slotId, CancellationToken ct)
@@ -147,6 +191,7 @@ public sealed class SlotService(MoonlightDbContext db, DashboardScope scope, Tim
 
         slot.Status = SlotStatus.Open;
         await db.SaveChangesAsync(ct);
+        await waitingList.NotifySlotsOpenedAsync(doctor.Id, [slot.StartsAt], ct);
         return ToDto(slot, ClinicTime.FindZone(doctor.Clinic!.Timezone), null);
     }
 

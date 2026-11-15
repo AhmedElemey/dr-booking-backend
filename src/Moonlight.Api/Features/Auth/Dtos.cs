@@ -17,6 +17,8 @@ public sealed record UserDto(
     UserRole Role,
     string PreferredLanguage,
     Guid? ClinicId,
-    Guid? DoctorId);
+    Guid? DoctorId,
+    bool WhatsAppOptIn,
+    bool MarketingOptIn);
 
 public sealed record AuthResponse(string AccessToken, string RefreshToken, int ExpiresIn, bool IsNewUser, UserDto User);

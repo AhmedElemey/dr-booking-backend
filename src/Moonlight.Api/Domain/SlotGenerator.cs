@@ -15,6 +15,7 @@ public enum SkipReason
     Past,
     Overlap,
     NonexistentLocalTime,
+    Holiday,
 }
 
 public sealed record SkippedSlot(DateTime LocalStart, DateTime? StartsAt, DateTime? EndsAt, SkipReason Reason);
@@ -36,7 +37,8 @@ public static class SlotGenerator
         BulkSlotSpec spec,
         TimeZoneInfo zone,
         DateTime nowUtc,
-        IReadOnlyCollection<TimeRange> existing)
+        IReadOnlyCollection<TimeRange> existing,
+        IReadOnlySet<DateOnly>? closedDates = null)
     {
         Validate(spec);
 
@@ -76,6 +78,10 @@ public static class SlotGenerator
                 if (startsAt < nowUtc)
                 {
                     skipped.Add(new SkippedSlot(localStart, startsAt, endsAt, SkipReason.Past));
+                }
+                else if (closedDates is not null && closedDates.Contains(date))
+                {
+                    skipped.Add(new SkippedSlot(localStart, startsAt, endsAt, SkipReason.Holiday));
                 }
                 else if (Overlaps(startsAt, endsAt, existing) || Overlaps(startsAt, endsAt, created))
                 {

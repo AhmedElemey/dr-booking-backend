@@ -147,6 +147,12 @@ public static partial class ClinicConfigLoader
 
         Text(config.Website?.Domain, "website.domain");
         Text(config.Mobile?.AndroidApplicationId, "mobile.androidApplicationId");
+        // The id doubles as the payment-return URI scheme, and `_` is not allowed in a URI scheme.
+        if (!string.IsNullOrWhiteSpace(config.Mobile?.AndroidApplicationId) && !AppIdPattern().IsMatch(config.Mobile.AndroidApplicationId))
+        {
+            errors.Add("mobile.androidApplicationId must be lower-case dot-separated segments of letters and digits without underscores (e.g. com.moonlight.app).");
+        }
+
         Text(config.Mobile?.IosBundleId, "mobile.iosBundleId");
         if (config.Console is null)
         {
@@ -180,6 +186,9 @@ public static partial class ClinicConfigLoader
 
     [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*$")]
     private static partial Regex SlugPattern();
+
+    [GeneratedRegex(@"^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$")]
+    private static partial Regex AppIdPattern();
 
     [GeneratedRegex("^#[0-9A-Fa-f]{6}$")]
     private static partial Regex HexColor();

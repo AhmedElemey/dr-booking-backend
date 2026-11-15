@@ -12,10 +12,11 @@ public static class Problems
         string code,
         string? detail = null,
         IDictionary<string, string[]>? errors = null,
-        IDictionary<string, object?>? extensions = null)
+        IDictionary<string, object?>? extensions = null,
+        int? statusOverride = null)
     {
         var lang = Language.FromRequest(context.Request);
-        var status = ErrorCodes.StatusOf(code);
+        var status = statusOverride ?? ErrorCodes.StatusOf(code);
         var body = new Dictionary<string, object?>
         {
             ["type"] = $"https://moonlight.example/errors/{code.ToLowerInvariant().Replace('_', '-')}",
@@ -49,7 +50,7 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) : I
     {
         if (exception is ApiException api)
         {
-            await Problems.WriteAsync(httpContext, api.Code, api.Detail, api.Errors, api.Extensions);
+            await Problems.WriteAsync(httpContext, api.Code, api.Detail, api.Errors, api.Extensions, api.StatusOverride);
             return true;
         }
 

@@ -11,7 +11,7 @@ using Moonlight.Api.Infrastructure;
 
 namespace Moonlight.Api.Features.Me;
 
-public sealed record UpdateMeDto(string? FullName, string? PreferredLanguage);
+public sealed record UpdateMeDto(string? FullName, string? PreferredLanguage, bool? WhatsAppOptIn = null, bool? MarketingOptIn = null);
 
 public sealed record DeviceTokenDto(string? Token, DevicePlatform? Platform);
 
@@ -30,7 +30,7 @@ public class MeController(MoonlightDbContext db, CurrentUser current, TimeProvid
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status401Unauthorized)]
     public async Task<UserDto> Get(CancellationToken ct) => await db.ToDtoAsync(await LoadUserAsync(ct), ct);
 
-    /// <summary>Update the caller's full name and/or preferred language (ar|en).</summary>
+    /// <summary>Update the caller's full name, preferred language (ar|en) and the WhatsApp / marketing opt-ins (both default to true).</summary>
     [HttpPut]
     [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
@@ -53,6 +53,8 @@ public class MeController(MoonlightDbContext db, CurrentUser current, TimeProvid
         var user = await LoadUserAsync(ct);
         user.FullName = request.FullName?.Trim() ?? user.FullName;
         user.PreferredLanguage = request.PreferredLanguage ?? user.PreferredLanguage;
+        user.WhatsAppOptIn = request.WhatsAppOptIn ?? user.WhatsAppOptIn;
+        user.MarketingOptIn = request.MarketingOptIn ?? user.MarketingOptIn;
         await db.SaveChangesAsync(ct);
         return await db.ToDtoAsync(user, ct);
     }
