@@ -43,6 +43,8 @@ public class Doctor
 
     public bool IsPublished { get; set; }
 
+    public bool OffersVideo { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }
 

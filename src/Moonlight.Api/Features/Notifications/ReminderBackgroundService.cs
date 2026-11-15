@@ -4,7 +4,8 @@ using Moonlight.Api.Common;
 
 namespace Moonlight.Api.Features.Notifications;
 
-// Ticks every Reminders:IntervalMinutes (5 by default) and runs the reminder processor in a fresh scope.
+// Ticks every Reminders:IntervalMinutes (5 by default) and runs the reminder processor and the maintenance jobs
+// (waiting-list expiry, review prompts, recall campaigns) in a fresh scope.
 public sealed class ReminderBackgroundService(
     IServiceScopeFactory scopes,
     IOptions<RemindersOptions> options,
@@ -20,6 +21,7 @@ public sealed class ReminderBackgroundService(
             {
                 using var scope = scopes.CreateScope();
                 await scope.ServiceProvider.GetRequiredService<ReminderProcessor>().RunOnceAsync(stoppingToken);
+                await scope.ServiceProvider.GetRequiredService<MaintenanceProcessor>().RunOnceAsync(stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

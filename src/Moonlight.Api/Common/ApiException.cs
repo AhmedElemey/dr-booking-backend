@@ -12,10 +12,17 @@ public sealed class ApiException(string code, string? detail = null, IDictionary
     /// <summary>Extra top-level members of the problem body (e.g. <c>feature</c>).</summary>
     public IDictionary<string, object?>? Extensions { get; } = extensions;
 
+    /// <summary>Overrides the HTTP status of the code (e.g. 422 for a VALIDATION_FAILED about a business rule).</summary>
+    public int? StatusOverride { get; init; }
+
     public static ApiException FeatureDisabled(string feature) =>
         new(ErrorCodes.FeatureDisabled, extensions: new Dictionary<string, object?> { ["feature"] = feature });
 
     public static ApiException NotFound() => new(ErrorCodes.NotFound);
+
+    /// <summary>A well-formed request that breaks a business rule: VALIDATION_FAILED with status 422.</summary>
+    public static ApiException Unprocessable(string field, string message) =>
+        new(ErrorCodes.ValidationFailed, errors: new Dictionary<string, string[]> { [field] = [message] }) { StatusOverride = 422 };
 
     public static ApiException Validation(string field, string message) =>
         new(ErrorCodes.ValidationFailed, errors: new Dictionary<string, string[]> { [field] = [message] });
@@ -40,6 +47,14 @@ public static class ErrorCodes
     public const string FeatureDisabled = "FEATURE_DISABLED";
     public const string RateLimited = "RATE_LIMITED";
     public const string InternalError = "INTERNAL_ERROR";
+    public const string ClinicClosed = "CLINIC_CLOSED";
+    public const string CouponInvalid = "COUPON_INVALID";
+    public const string AlreadyReviewed = "ALREADY_REVIEWED";
+    public const string NotReviewable = "NOT_REVIEWABLE";
+    public const string PaymentNotAllowed = "PAYMENT_NOT_ALLOWED";
+    public const string VideoNotOpen = "VIDEO_NOT_OPEN";
+    public const string AlreadyWaiting = "ALREADY_WAITING";
+    public const string ProviderError = "PROVIDER_ERROR";
 
     private sealed record Entry(int Status, string TitleEn, string TitleAr, string DetailEn, string DetailAr);
 
@@ -61,6 +76,14 @@ public static class ErrorCodes
         [BookingLimit] = new(409, "Booking limit reached", "تم الوصول للحد الأقصى للحجوزات", "You have reached the booking limit. Cancel an upcoming booking or pick another day.", "وصلت للحد الأقصى للحجوزات. ألغِ حجزا قادما أو اختر يوما آخر."),
         [FeatureDisabled] = new(403, "Feature unavailable", "الخدمة غير متاحة", "This feature is turned off for this clinic. Please call the clinic.", "هذه الخدمة غير مفعلة لدى العيادة. من فضلك اتصل بالعيادة."),
         [RateLimited] = new(429, "Too many requests", "طلبات كثيرة", "Too many requests. Please try again later.", "طلبات كثيرة جدا. حاول مرة أخرى لاحقا."),
+        [ClinicClosed] = new(409, "Clinic closed", "العيادة مغلقة", "The clinic is closed on this date. Please pick another day.", "العيادة مغلقة في هذا اليوم. من فضلك اختر يوما آخر."),
+        [CouponInvalid] = new(422, "Coupon not valid", "الكوبون غير صالح", "This coupon cannot be applied to the booking.", "لا يمكن تطبيق هذا الكوبون على الحجز."),
+        [AlreadyReviewed] = new(409, "Already reviewed", "تم التقييم مسبقا", "You have already reviewed this visit.", "لقد قمت بتقييم هذه الزيارة من قبل."),
+        [NotReviewable] = new(409, "Visit cannot be reviewed", "لا يمكن تقييم الزيارة", "Only completed visits can be reviewed.", "يمكن تقييم الزيارات المكتملة فقط."),
+        [PaymentNotAllowed] = new(409, "Payment not allowed", "الدفع غير متاح", "This appointment cannot be paid online (it must be confirmed, upcoming, unpaid and have an amount due).", "لا يمكن دفع هذا الحجز إلكترونيا (يجب أن يكون مؤكدا وقادما وغير مدفوع وله مبلغ مستحق)."),
+        [VideoNotOpen] = new(409, "Video room not open", "غرفة الفيديو غير متاحة", "The video room opens 15 minutes before the visit and closes 30 minutes after it ends.", "تفتح غرفة الفيديو قبل الموعد بـ 15 دقيقة وتغلق بعد انتهائه بـ 30 دقيقة."),
+        [AlreadyWaiting] = new(409, "Already on the waiting list", "أنت في قائمة الانتظار بالفعل", "You are already waiting for this doctor on that day.", "أنت في قائمة الانتظار لهذا الطبيب في هذا اليوم بالفعل."),
+        [ProviderError] = new(502, "Provider error", "خطأ في مزود الخدمة", "The external provider failed. Please try again later.", "تعذر الاتصال بمزود الخدمة الخارجي. حاول مرة أخرى لاحقا."),
         [InternalError] = new(500, "Internal error", "خطأ داخلي", "Something went wrong.", "حدث خطأ ما."),
     };
 

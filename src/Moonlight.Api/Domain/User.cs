@@ -14,6 +14,10 @@ public class User
 
     public bool IsActive { get; set; } = true;
 
+    public bool WhatsAppOptIn { get; set; } = true;
+
+    public bool MarketingOptIn { get; set; } = true;
+
     public DateTime CreatedAt { get; set; }
 }
 

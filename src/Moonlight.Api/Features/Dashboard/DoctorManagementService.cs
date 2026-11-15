@@ -2,22 +2,28 @@ using Microsoft.EntityFrameworkCore;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
+using Moonlight.Api.Features.Insurance;
 using Moonlight.Api.Infrastructure;
 using Moonlight.Api.Infrastructure.Storage;
 
 namespace Moonlight.Api.Features.Dashboard;
 
-public sealed class DoctorManagementService(MoonlightDbContext db, DashboardScope scope, IPhotoStorage storage)
+public sealed class DoctorManagementService(MoonlightDbContext db, DashboardScope scope, IPhotoStorage storage, InsuranceService insurance)
 {
     public const int MaxPhotoBytes = 2 * 1024 * 1024;
 
     public async Task<List<ManagedDoctorDto>> ListAsync(CancellationToken ct)
     {
         var doctors = await scope.Doctors().AsNoTracking().OrderBy(d => d.NameEn).ThenBy(d => d.Id).ToListAsync(ct);
-        return doctors.Select(ToDto).ToList();
+        var accepted = await insurance.AcceptedByDoctorAsync(doctors.Select(d => d.Id).ToList(), ct);
+        return doctors.Select(d => ToDto(d, accepted.GetValueOrDefault(d.Id) ?? [])).ToList();
     }
 
-    public async Task<ManagedDoctorDto> GetAsync(Guid id, CancellationToken ct) => ToDto(await scope.RequireDoctorAsync(id, ct));
+    public async Task<ManagedDoctorDto> GetAsync(Guid id, CancellationToken ct)
+    {
+        var doctor = await scope.RequireDoctorAsync(id, ct);
+        return await ToDtoAsync(doctor, ct);
+    }
 
     public async Task<ManagedDoctorDto> UpdateAsync(Guid id, UpdateDoctorDto request, CancellationToken ct)
     {
@@ -45,8 +51,9 @@ public sealed class DoctorManagementService(MoonlightDbContext db, DashboardScop
         doctor.ConsultationFeeEgp = request.ConsultationFeeEgp;
         doctor.SpecialtyId = request.SpecialtyId!.Value;
         doctor.IsPublished = request.IsPublished ?? doctor.IsPublished;
+        doctor.OffersVideo = request.OffersVideo ?? doctor.OffersVideo;
         await db.SaveChangesAsync(ct);
-        return ToDto(doctor);
+        return await ToDtoAsync(doctor, ct);
     }
 
     public async Task<string> UploadPhotoAsync(Guid id, IFormFile? file, string baseUrl, CancellationToken ct)
@@ -158,8 +165,14 @@ public sealed class DoctorManagementService(MoonlightDbContext db, DashboardScop
         return null;
     }
 
-    private static ManagedDoctorDto ToDto(Doctor d) => new(
-        d.Id, d.ClinicId, d.SpecialtyId, d.Slug, d.NameAr, d.NameEn, d.BioAr, d.BioEn, d.PhotoUrl, d.YearsExperience, d.ConsultationFeeEgp, d.IsPublished);
+    private async Task<ManagedDoctorDto> ToDtoAsync(Doctor d, CancellationToken ct)
+    {
+        var accepted = await insurance.AcceptedByDoctorAsync([d.Id], ct);
+        return ToDto(d, accepted.GetValueOrDefault(d.Id) ?? []);
+    }
+
+    private static ManagedDoctorDto ToDto(Doctor d, IReadOnlyList<InsuranceProviderRefDto> accepted) => new(
+        d.Id, d.ClinicId, d.SpecialtyId, d.Slug, d.NameAr, d.NameEn, d.BioAr, d.BioEn, d.PhotoUrl, d.YearsExperience, d.ConsultationFeeEgp, d.IsPublished, d.OffersVideo, accepted);
 
     private static ManagedServiceDto ToDto(Service s) => new(s.Id, s.NameAr, s.NameEn, s.DurationMinutes, s.PriceEgp, s.IsActive);
 }

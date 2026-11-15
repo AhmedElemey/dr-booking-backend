@@ -26,6 +26,6 @@ public static class UserScope
     public static async Task<UserDto> ToDtoAsync(this MoonlightDbContext db, User user, CancellationToken ct)
     {
         var (clinicId, doctorId) = await db.LoadAsync(user, ct);
-        return new UserDto(user.Id, user.Phone, user.FullName, user.Role, user.PreferredLanguage, clinicId, doctorId);
+        return new UserDto(user.Id, user.Phone, user.FullName, user.Role, user.PreferredLanguage, clinicId, doctorId, user.WhatsAppOptIn, user.MarketingOptIn);
     }
 }

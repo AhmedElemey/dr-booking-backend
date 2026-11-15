@@ -8,4 +8,10 @@ public interface INotificationService
     Task AppointmentCancelledByClinicAsync(Guid appointmentId, CancellationToken ct = default);
 
     Task AppointmentReminderAsync(Guid appointmentId, CancellationToken ct = default);
+
+    /// <summary>"A slot opened with Dr X on date. Book now." for one waiting-list entry.</summary>
+    Task WaitingListSlotOpenedAsync(Guid waitingListEntryId, CancellationToken ct = default);
+
+    /// <summary>"Rate your visit" after an appointment was completed.</summary>
+    Task ReviewPromptAsync(Guid appointmentId, CancellationToken ct = default);
 }

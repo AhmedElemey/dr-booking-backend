@@ -14,12 +14,27 @@ using Moonlight.Api.Features.Appointments;
 using Moonlight.Api.Features.Auth;
 using Moonlight.Api.Features.Catalog;
 using Moonlight.Api.Features.Dashboard;
+using Moonlight.Api.Features.Family;
 using Moonlight.Api.Features.Flags;
+using Moonlight.Api.Features.Holidays;
+using Moonlight.Api.Features.Insurance;
 using Moonlight.Api.Features.Notifications;
+using Moonlight.Api.Features.Payments;
+using Moonlight.Api.Features.Promotions;
+using Moonlight.Api.Features.Recall;
+using Moonlight.Api.Features.Records;
+using Moonlight.Api.Features.Reports;
+using Moonlight.Api.Features.Reviews;
+using Moonlight.Api.Features.Templates;
+using Moonlight.Api.Features.Video;
+using Moonlight.Api.Features.WaitingList;
 using Moonlight.Api.Infrastructure.Auth;
 using Moonlight.Api.Infrastructure.Fcm;
+using Moonlight.Api.Infrastructure.Payments;
 using Moonlight.Api.Infrastructure.Sms;
 using Moonlight.Api.Infrastructure.Storage;
+using Moonlight.Api.Infrastructure.Video;
+using Moonlight.Api.Infrastructure.WhatsApp;
 
 using Swashbuckle.AspNetCore.SwaggerGen;
 
@@ -58,6 +73,10 @@ public static class ServiceRegistration
         services.Configure<FcmOptions>(configuration.GetSection(FcmOptions.Section));
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.Section));
         services.Configure<RemindersOptions>(configuration.GetSection(RemindersOptions.Section));
+        services.Configure<PaymentsOptions>(configuration.GetSection(PaymentsOptions.Section));
+        services.Configure<WhatsAppOptions>(configuration.GetSection(WhatsAppOptions.Section));
+        services.Configure<VideoOptions>(configuration.GetSection(VideoOptions.Section));
+        services.Configure<BackgroundJobsOptions>(configuration.GetSection(BackgroundJobsOptions.Section));
 
         var jwt = configuration.GetSection(JwtOptions.Section).Get<JwtOptions>() ?? new JwtOptions();
         if (jwt.Key.Length < 32)
@@ -109,9 +128,14 @@ public static class ServiceRegistration
             services.AddSingleton<IPushSender>(sp => new FcmPushSender(fcmJson, sp.GetRequiredService<ILogger<FcmPushSender>>()));
         }
 
+        AddPhase2Providers(services, configuration);
+
         services.AddSingleton<IPhotoStorage, LocalDiskPhotoStorage>();
+        services.AddScoped<MessageDispatcher>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ReminderProcessor>();
+        services.AddScoped<ReviewPromptProcessor>();
+        services.AddScoped<MaintenanceProcessor>();
         if (configuration.GetValue("Reminders:Enabled", true))
         {
             services.AddHostedService<ReminderBackgroundService>();
@@ -138,6 +162,18 @@ public static class ServiceRegistration
         services.AddScoped<SlotService>();
         services.AddScoped<ClinicManagementService>();
         services.AddScoped<AdminService>();
+        services.AddScoped<HolidayService>();
+        services.AddScoped<TemplateService>();
+        services.AddScoped<WaitingListService>();
+        services.AddScoped<FamilyService>();
+        services.AddScoped<PaymentService>();
+        services.AddScoped<InsuranceService>();
+        services.AddScoped<RecordsService>();
+        services.AddScoped<ReviewService>();
+        services.AddScoped<CouponService>();
+        services.AddScoped<RecallService>();
+        services.AddScoped<ReportService>();
+        services.AddScoped<VideoService>();
 
         // Auth
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -165,6 +201,7 @@ public static class ServiceRegistration
             {
                 json.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
                 json.JsonSerializerOptions.Converters.Add(new TimeOnlyJsonConverter());
+                json.JsonSerializerOptions.Converters.Add(new FlexibleDateOnlyJsonConverter());
             })
             .ConfigureApiBehaviorOptions(options => options.InvalidModelStateResponseFactory = context =>
             {
@@ -201,6 +238,67 @@ public static class ServiceRegistration
             });
             options.OperationFilter<BearerOperationFilter>();
         });
+    }
+
+    // Payment, WhatsApp and video providers are chosen by configuration (Payments:Provider, WhatsApp:Provider, Video:Provider).
+    private static void AddPhase2Providers(IServiceCollection services, IConfiguration configuration)
+    {
+        var payments = configuration.GetSection(PaymentsOptions.Section).Get<PaymentsOptions>() ?? new PaymentsOptions();
+        switch (payments.Provider.ToLowerInvariant())
+        {
+            case "mock":
+                services.AddScoped<IPaymentProvider, MockPaymentProvider>();
+                break;
+            case "paymob":
+                var paymob = payments.Paymob;
+                var missing = new[]
+                {
+                    (nameof(PaymobOptions.ApiKey), paymob.ApiKey),
+                    (nameof(PaymobOptions.IntegrationId), paymob.IntegrationId),
+                    (nameof(PaymobOptions.IframeId), paymob.IframeId),
+                    (nameof(PaymobOptions.HmacSecret), paymob.HmacSecret),
+                }.Where(x => string.IsNullOrWhiteSpace(x.Item2)).Select(x => $"Payments:Paymob:{x.Item1}").ToList();
+                if (missing.Count > 0)
+                {
+                    throw new InvalidOperationException($"Payments:Provider is Paymob but {string.Join(", ", missing)} {(missing.Count == 1 ? "is" : "are")} not set.");
+                }
+
+                services.AddHttpClient<IPaymentProvider, PaymobPaymentProvider>(client => client.Timeout = TimeSpan.FromSeconds(30));
+                break;
+            default:
+                throw new InvalidOperationException($"Payments:Provider '{payments.Provider}' is not supported; use 'Mock' or 'Paymob'.");
+        }
+
+        var whatsApp = configuration.GetSection(WhatsAppOptions.Section).Get<WhatsAppOptions>() ?? new WhatsAppOptions();
+        switch (whatsApp.Provider.ToLowerInvariant())
+        {
+            case "mock":
+                services.AddSingleton<IWhatsAppSender, MockWhatsAppSender>();
+                break;
+            case "meta":
+                if (string.IsNullOrWhiteSpace(whatsApp.PhoneNumberId) || string.IsNullOrWhiteSpace(whatsApp.AccessToken))
+                {
+                    throw new InvalidOperationException("WhatsApp:Provider is Meta but WhatsApp:PhoneNumberId and WhatsApp:AccessToken are not both set.");
+                }
+
+                services.AddHttpClient<IWhatsAppSender, MetaWhatsAppSender>(client => client.Timeout = TimeSpan.FromSeconds(30));
+                break;
+            default:
+                throw new InvalidOperationException($"WhatsApp:Provider '{whatsApp.Provider}' is not supported; use 'Mock' or 'Meta'.");
+        }
+
+        var video = configuration.GetSection(VideoOptions.Section).Get<VideoOptions>() ?? new VideoOptions();
+        switch (video.Provider.ToLowerInvariant())
+        {
+            case "jitsi":
+                services.AddSingleton<IVideoProvider, JitsiVideoProvider>();
+                break;
+            case "mock":
+                services.AddSingleton<IVideoProvider, MockVideoProvider>();
+                break;
+            default:
+                throw new InvalidOperationException($"Video:Provider '{video.Provider}' is not supported; use 'Jitsi' or 'Mock'.");
+        }
     }
 
     private static string ToFieldName(string key)

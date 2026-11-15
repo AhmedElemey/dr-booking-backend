@@ -24,14 +24,14 @@ public class CatalogController(CatalogService catalog) : ControllerBase
     [ProducesResponseType(typeof(List<string>), StatusCodes.Status200OK)]
     public Task<List<string>> Cities(CancellationToken ct) => catalog.CitiesAsync(ct);
 
-    /// <summary>Search published doctors by specialty, city and name. Needs sign-in when the guestBrowsing feature is off (401).</summary>
+    /// <summary>Search published doctors by specialty, city, name and (insurance feature) accepted insurance provider. Needs sign-in when the guestBrowsing feature is off (401).</summary>
     [HttpGet("doctors")]
     [RequireSignInUnlessGuestBrowsing]
     [ProducesResponseType(typeof(PagedResult<DoctorSummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
     public Task<PagedResult<DoctorSummaryDto>> Doctors(
-        Guid? specialtyId, string? city, string? q, int? page, int? pageSize, CancellationToken ct) =>
-        catalog.SearchDoctorsAsync(specialtyId, city, q, PageRequest.Create(page, pageSize), ct);
+        Guid? specialtyId, string? city, string? q, Guid? insuranceProviderId, int? page, int? pageSize, CancellationToken ct) =>
+        catalog.SearchDoctorsAsync(specialtyId, city, q, insuranceProviderId, PageRequest.Create(page, pageSize), ct);
 
     /// <summary>Public doctor profile with clinic info and active services. Accepts the doctor's id or slug.</summary>
     [HttpGet("doctors/{idOrSlug}")]

@@ -2,15 +2,24 @@ using Microsoft.EntityFrameworkCore;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
+using Moonlight.Api.Features.Family;
+using Moonlight.Api.Features.Flags;
+using Moonlight.Api.Features.Insurance;
+using Moonlight.Api.Features.Promotions;
+using Moonlight.Api.Features.Reviews;
 
 namespace Moonlight.Api.Features.Appointments;
 
-public sealed class AppointmentMapper(Language lang)
+public sealed class AppointmentMapper(Language lang, FeatureService features)
 {
     public static IQueryable<Appointment> WithDetails(IQueryable<Appointment> query) =>
         query.Include(a => a.Slot!).ThenInclude(s => s.Doctor!).ThenInclude(d => d.Clinic)
             .Include(a => a.Service)
-            .Include(a => a.Patient);
+            .Include(a => a.Patient)
+            .Include(a => a.FamilyMember)
+            .Include(a => a.InsuranceProvider)
+            .Include(a => a.Review)
+            .Include(a => a.Payments);
 
     public AppointmentDto ToPatientDto(Appointment a)
     {
@@ -18,6 +27,7 @@ public sealed class AppointmentMapper(Language lang)
         var doctor = slot.Doctor!;
         var clinic = doctor.Clinic!;
         var (local, zone) = Local(slot.StartsAt, clinic.Timezone);
+        var price = PriceOf(a);
         return new AppointmentDto(
             a.Id,
             a.Status,
@@ -31,7 +41,16 @@ public sealed class AppointmentMapper(Language lang)
             ToService(a.Service),
             a.PatientNote,
             a.CancelledBy,
-            a.CancelReason);
+            a.CancelReason,
+            a.Mode,
+            price,
+            a.DiscountEgp,
+            Math.Max(0, price - a.DiscountEgp),
+            PaymentStatusOf(a),
+            ToFamily(a.FamilyMember),
+            ToInsurance(a),
+            features.IsEnabled(FeatureKeys.Reviews) && a.Status == AppointmentStatus.Completed && a.Review is null,
+            ToReview(a.Review));
     }
 
     public DashboardAppointmentDto ToDashboardDto(Appointment a)
@@ -39,6 +58,7 @@ public sealed class AppointmentMapper(Language lang)
         var slot = a.Slot!;
         var doctor = slot.Doctor!;
         var (local, zone) = Local(slot.StartsAt, doctor.Clinic!.Timezone);
+        var price = PriceOf(a);
         return new DashboardAppointmentDto(
             a.Id,
             a.Status,
@@ -52,8 +72,47 @@ public sealed class AppointmentMapper(Language lang)
             ToService(a.Service),
             a.PatientNote,
             a.CancelledBy,
-            a.CancelReason);
+            a.CancelReason,
+            a.Mode,
+            price,
+            a.DiscountEgp,
+            Math.Max(0, price - a.DiscountEgp),
+            PaymentStatusOf(a),
+            ToFamily(a.FamilyMember),
+            ToInsurance(a),
+            ToReview(a.Review));
     }
+
+    // The price snapshot taken at booking; appointments that predate it fall back to the current service price / doctor fee.
+    private static decimal PriceOf(Appointment a) => a.PriceEgp ?? CouponService.PriceOf(a.Slot!.Doctor!, a.Service) ?? 0m;
+
+    public static AppointmentPaymentStatus PaymentStatusOf(Appointment a)
+    {
+        if (a.Payments.Any(p => p.Status == PaymentStatus.Paid))
+        {
+            return AppointmentPaymentStatus.Paid;
+        }
+
+        if (a.Payments.Any(p => p.Status == PaymentStatus.Pending))
+        {
+            return AppointmentPaymentStatus.Pending;
+        }
+
+        return a.Payments.Any(p => p.Status == PaymentStatus.Refunded) ? AppointmentPaymentStatus.Refunded : AppointmentPaymentStatus.Unpaid;
+    }
+
+    private static FamilyMemberRefDto? ToFamily(FamilyMember? m) => m is null ? null : new FamilyMemberRefDto(m.Id, m.FullName, m.Relation);
+
+    private static ReviewRefDto? ToReview(Review? r) => r is null ? null : new ReviewRefDto(r.Rating, r.Comment);
+
+    private InsuranceRefDto? ToInsurance(Appointment a) =>
+        a.InsuranceProvider is null
+            ? null
+            : new InsuranceRefDto(
+                new InsuranceProviderRefDto(a.InsuranceProvider.Id, lang.Pick(a.InsuranceProvider.NameAr, a.InsuranceProvider.NameEn)),
+                a.InsuranceMemberNumber,
+                a.InsuranceStatus ?? InsuranceStatus.Pending,
+                a.InsuranceNote);
 
     private static (DateTimeOffset Local, string Zone) Local(DateTime utc, string timezone)
     {

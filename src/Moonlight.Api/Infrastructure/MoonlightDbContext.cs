@@ -30,6 +30,36 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
 
     public DbSet<FeatureState> FeatureStates => Set<FeatureState>();
 
+    public DbSet<ClinicHoliday> ClinicHolidays => Set<ClinicHoliday>();
+
+    public DbSet<WorkingHoursTemplate> WorkingHoursTemplates => Set<WorkingHoursTemplate>();
+
+    public DbSet<WaitingListEntry> WaitingListEntries => Set<WaitingListEntry>();
+
+    public DbSet<FamilyMember> FamilyMembers => Set<FamilyMember>();
+
+    public DbSet<OutboundMessage> OutboundMessages => Set<OutboundMessage>();
+
+    public DbSet<Payment> Payments => Set<Payment>();
+
+    public DbSet<InsuranceProvider> InsuranceProviders => Set<InsuranceProvider>();
+
+    public DbSet<DoctorInsuranceProvider> DoctorInsuranceProviders => Set<DoctorInsuranceProvider>();
+
+    public DbSet<PatientMedicalInfo> PatientMedicalInfos => Set<PatientMedicalInfo>();
+
+    public DbSet<PatientRecordEntry> PatientRecordEntries => Set<PatientRecordEntry>();
+
+    public DbSet<Review> Reviews => Set<Review>();
+
+    public DbSet<Coupon> Coupons => Set<Coupon>();
+
+    public DbSet<CouponRedemption> CouponRedemptions => Set<CouponRedemption>();
+
+    public DbSet<RecallCampaign> RecallCampaigns => Set<RecallCampaign>();
+
+    public DbSet<RecallSend> RecallSends => Set<RecallSend>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(e =>
@@ -128,6 +158,198 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.HasOne(a => a.Patient).WithMany().HasForeignKey(a => a.PatientUserId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(a => a.Service).WithMany().HasForeignKey(a => a.ServiceId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<User>().WithMany().HasForeignKey(a => a.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(a => a.Mode).HasConversion<string>().HasMaxLength(20).HasDefaultValue(AppointmentMode.InPerson);
+            e.Property(a => a.PriceEgp).HasPrecision(10, 2);
+            e.Property(a => a.DiscountEgp).HasPrecision(10, 2);
+            e.Property(a => a.InsuranceStatus).HasConversion<string>().HasMaxLength(20);
+            e.Property(a => a.InsuranceMemberNumber).HasMaxLength(100);
+            e.Property(a => a.InsuranceNote).HasMaxLength(500);
+            e.Property(a => a.VideoRoomName).HasMaxLength(100);
+            e.Property(a => a.VideoPatientUrl).HasMaxLength(500);
+            e.Property(a => a.VideoHostUrl).HasMaxLength(500);
+            e.HasIndex(a => a.FamilyMemberId);
+            e.HasIndex(a => a.CompletedAt)
+                .HasFilter("status = 'Completed' AND review_prompt_sent_at IS NULL")
+                .HasDatabaseName("ix_appointments_review_prompt_due");
+            e.HasOne(a => a.FamilyMember).WithMany().HasForeignKey(a => a.FamilyMemberId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(a => a.InsuranceProvider).WithMany().HasForeignKey(a => a.InsuranceProviderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(a => a.Payments).WithOne(p => p.Appointment).HasForeignKey(p => p.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(a => a.Review).WithOne().HasForeignKey<Review>(r => r.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<User>(e =>
+        {
+            e.Property(u => u.WhatsAppOptIn).HasDefaultValue(true);
+            e.Property(u => u.MarketingOptIn).HasDefaultValue(true);
+        });
+
+        modelBuilder.Entity<Doctor>(e => e.Property(d => d.OffersVideo).HasDefaultValue(false));
+
+        modelBuilder.Entity<ClinicHoliday>(e =>
+        {
+            e.HasIndex(h => new { h.ClinicId, h.Date }).IsUnique();
+            e.Property(h => h.NameAr).HasMaxLength(200);
+            e.Property(h => h.NameEn).HasMaxLength(200);
+            e.Property(h => h.Source).HasConversion<string>().HasMaxLength(20);
+            e.HasOne<Clinic>().WithMany().HasForeignKey(h => h.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WorkingHoursTemplate>(e =>
+        {
+            e.Property(t => t.Name).HasMaxLength(200);
+            e.Property(t => t.Rules).HasColumnType("jsonb");
+            e.HasIndex(t => t.ClinicId);
+            e.HasOne<Clinic>().WithMany().HasForeignKey(t => t.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WaitingListEntry>(e =>
+        {
+            e.Property(w => w.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(w => new { w.DoctorId, w.Date, w.Status });
+            e.HasIndex(w => w.PatientUserId);
+            e.HasIndex(w => new { w.PatientUserId, w.DoctorId, w.Date, w.FamilyMemberId })
+                .IsUnique()
+                .HasFilter("status IN ('Waiting', 'Notified')")
+                .AreNullsDistinct(false)
+                .HasDatabaseName("ux_waiting_list_active");
+            e.HasOne(w => w.Patient).WithMany().HasForeignKey(w => w.PatientUserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(w => w.Doctor).WithMany().HasForeignKey(w => w.DoctorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FamilyMember>().WithMany().HasForeignKey(w => w.FamilyMemberId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FamilyMember>(e =>
+        {
+            e.Property(f => f.FullName).HasMaxLength(200);
+            e.Property(f => f.Relation).HasConversion<string>().HasMaxLength(20);
+            e.Property(f => f.Gender).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(f => f.OwnerUserId);
+            e.HasOne<User>().WithMany().HasForeignKey(f => f.OwnerUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OutboundMessage>(e =>
+        {
+            e.Property(m => m.Channel).HasConversion<string>().HasMaxLength(20);
+            e.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(m => m.To).HasMaxLength(100);
+            e.Property(m => m.Kind).HasMaxLength(60);
+            e.Property(m => m.Body).HasMaxLength(4000);
+            e.Property(m => m.ProviderRef).HasMaxLength(200);
+            e.Property(m => m.Error).HasMaxLength(1000);
+            e.HasIndex(m => m.CreatedAt);
+            e.HasIndex(m => m.ClinicId);
+        });
+
+        modelBuilder.Entity<Payment>(e =>
+        {
+            e.Property(p => p.AmountEgp).HasPrecision(10, 2);
+            e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.Method).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.Provider).HasMaxLength(40);
+            e.Property(p => p.ProviderRef).HasMaxLength(200);
+            e.Property(p => p.ProviderTransactionId).HasMaxLength(200);
+            e.Property(p => p.ReturnUrl).HasMaxLength(500);
+            e.HasIndex(p => p.AppointmentId);
+            e.HasIndex(p => new { p.Provider, p.ProviderRef });
+            e.HasIndex(p => p.CreatedAt);
+        });
+
+        modelBuilder.Entity<InsuranceProvider>(e =>
+        {
+            e.Property(i => i.NameAr).HasMaxLength(200);
+            e.Property(i => i.NameEn).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<DoctorInsuranceProvider>(e =>
+        {
+            e.HasKey(d => new { d.DoctorId, d.InsuranceProviderId });
+            e.HasOne<Doctor>().WithMany().HasForeignKey(d => d.DoctorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(d => d.InsuranceProvider).WithMany().HasForeignKey(d => d.InsuranceProviderId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PatientMedicalInfo>(e =>
+        {
+            e.Property(m => m.BloodType).HasMaxLength(10);
+            e.Property(m => m.Allergies).HasMaxLength(2000);
+            e.Property(m => m.ChronicConditions).HasMaxLength(2000);
+            e.Property(m => m.Medications).HasMaxLength(2000);
+            e.HasIndex(m => m.PatientUserId).IsUnique().HasFilter("family_member_id IS NULL").HasDatabaseName("ux_medical_info_self");
+            e.HasIndex(m => new { m.PatientUserId, m.FamilyMemberId }).IsUnique().HasFilter("family_member_id IS NOT NULL").HasDatabaseName("ux_medical_info_member");
+            e.HasOne<User>().WithMany().HasForeignKey(m => m.PatientUserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FamilyMember>().WithMany().HasForeignKey(m => m.FamilyMemberId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PatientRecordEntry>(e =>
+        {
+            e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.Title).HasMaxLength(200);
+            e.Property(r => r.Body).HasMaxLength(8000);
+            e.Property(r => r.AttachmentUrl).HasMaxLength(500);
+            e.HasIndex(r => new { r.PatientUserId, r.ClinicId });
+            e.HasOne<User>().WithMany().HasForeignKey(r => r.PatientUserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(r => r.AuthorUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<FamilyMember>().WithMany().HasForeignKey(r => r.FamilyMemberId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Appointment>().WithMany().HasForeignKey(r => r.AppointmentId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Doctor>().WithMany().HasForeignKey(r => r.DoctorId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<Review>(e =>
+        {
+            e.HasIndex(r => r.AppointmentId).IsUnique();
+            e.HasIndex(r => new { r.DoctorId, r.Status, r.CreatedAt });
+            e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.Comment).HasMaxLength(1000);
+            e.Property(r => r.Reply).HasMaxLength(1000);
+            e.ToTable(t => t.HasCheckConstraint("ck_reviews_rating", "rating BETWEEN 1 AND 5"));
+            e.HasOne(r => r.Doctor).WithMany().HasForeignKey(r => r.DoctorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.Patient).WithMany().HasForeignKey(r => r.PatientUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Coupon>(e =>
+        {
+            e.HasIndex(c => c.Code).IsUnique();
+            e.Property(c => c.Code).HasMaxLength(20);
+            e.Property(c => c.TitleAr).HasMaxLength(200);
+            e.Property(c => c.TitleEn).HasMaxLength(200);
+            e.Property(c => c.DescriptionAr).HasMaxLength(1000);
+            e.Property(c => c.DescriptionEn).HasMaxLength(1000);
+            e.Property(c => c.DiscountType).HasConversion<string>().HasMaxLength(20);
+            e.Property(c => c.Value).HasPrecision(10, 2);
+            e.Property(c => c.MaxDiscountEgp).HasPrecision(10, 2);
+            e.HasOne<Clinic>().WithMany().HasForeignKey(c => c.ClinicId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Doctor>().WithMany().HasForeignKey(c => c.DoctorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Service>().WithMany().HasForeignKey(c => c.ServiceId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CouponRedemption>(e =>
+        {
+            e.HasKey(r => new { r.CouponId, r.AppointmentId });
+            e.Property(r => r.DiscountEgp).HasPrecision(10, 2);
+            e.HasIndex(r => new { r.CouponId, r.PatientUserId });
+            e.HasOne<Coupon>().WithMany().HasForeignKey(r => r.CouponId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Appointment>().WithMany().HasForeignKey(r => r.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(r => r.PatientUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RecallCampaign>(e =>
+        {
+            e.Property(c => c.Name).HasMaxLength(200);
+            e.Property(c => c.MessageAr).HasMaxLength(1000);
+            e.Property(c => c.MessageEn).HasMaxLength(1000);
+            e.Property(c => c.Channel).HasConversion<string>().HasMaxLength(20);
+            e.Property(c => c.Mode).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(c => c.ClinicId);
+            e.HasOne<Clinic>().WithMany().HasForeignKey(c => c.ClinicId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Doctor>().WithMany().HasForeignKey(c => c.DoctorId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Service>().WithMany().HasForeignKey(c => c.ServiceId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RecallSend>(e =>
+        {
+            e.Property(s => s.Channel).HasConversion<string>().HasMaxLength(20);
+            e.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(s => new { s.CampaignId, s.PatientUserId, s.SentAt });
+            e.HasOne<RecallCampaign>().WithMany().HasForeignKey(s => s.CampaignId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(s => s.PatientUserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<OtpCode>(e =>
