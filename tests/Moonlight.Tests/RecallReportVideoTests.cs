@@ -132,14 +132,11 @@ public class RecallTests(PostgresFixture db) : Phase2TestBase(db)
         Enable(FeatureKeys.RecallCampaigns);
         await ScenarioAsync("Recurring");
         var local = TimeZoneInfo.ConvertTimeFromUtc(Now, Cairo);
-        if (local.Hour >= 10)
-        {
-            Factory.Clock.Advance(TimeSpan.FromHours(24) - TimeSpan.FromHours(local.Hour) + TimeSpan.FromHours(-local.Minute / 60.0) + TimeSpan.FromHours(3));
-        }
-        else
-        {
-            Factory.Clock.Advance(local.Date.AddHours(10.5) - local);
-        }
+        // Choose 10:30 today, or tomorrow when today's run hour has passed.
+        // Advancing to 03:00 the next day would leave the campaign not yet due.
+        var targetLocal = local.Date.AddDays(local.Hour >= 10 ? 1 : 0).AddHours(10.5);
+        var targetUtc = TimeZoneInfo.ConvertTimeToUtc(targetLocal, Cairo);
+        Factory.Clock.Advance(targetUtc - Now);
 
         async Task<int> RunAsync()
         {
