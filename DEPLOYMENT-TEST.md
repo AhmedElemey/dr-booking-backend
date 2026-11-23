@@ -35,3 +35,14 @@ Sources checked November 23, 2026:
 ## Remaining acceptance tests
 
 After reviewed changes merge and resources deploy: verify HTTPS health, exact CORS allow-list, private OTP login, synthetic booking/cancel across Website and Dashboard, Flutter web login/booking, Console authentication and API route behavior, denied anonymous/staff/patient cross-role calls, disabled uploads/payment/messaging, no default secrets, and final $0 account billing. Do not report deployment complete from a successful build alone.
+
+
+## Forwarding and startup guards (review update)
+
+`ReverseProxy__KnownProxies__0` accepts a verified proxy IP; `ReverseProxy__KnownNetworks__0` accepts a verified CIDR. No trust is enabled by default. Do not copy a broad private range from an example. Confirm Render's actual ingress topology and the narrowest supported trusted range before enabling forwarding. Render outbound ranges are not ingress proxy ranges. Keep `ReverseProxy__ForwardLimit=1` unless the verified topology needs more hops (maximum 5). Global CIDRs are refused. `ASPNETCORE_FORWARDEDHEADERS_ENABLED` must remain unset.
+
+After deployment, temporarily inspect the resolved client IP with synthetic requests from two clients and a forged leftmost forwarded entry, then remove diagnostic logging. Do not log OTPs, tokens or patient data. Production/deployment remains blocked until this check proves distinct legitimate clients and rejects spoofed addresses. No broad CIDR is preconfigured by this change.
+
+Outside Development, JWT keys containing the public development markers are refused. Use a private generated signing key, not a value copied from development settings.
+
+Hosted synthetic demo mode raises the shared per-IP OTP allowance to at least 200/hour while keeping the existing per-phone limits. This mitigates the website server-side proxy bucket; it does not establish real-client-IP forwarding or remove the need to verify trust topology. Production limits are unchanged. The concurrent refund test now permits either the patient cancellation or one staff refund to win. It still requires exactly one provider call, final Refunded state, only 200-Refunded or 409 staff responses, at most one successful staff response, and successful patient cancellation. PaymentService is unchanged.
