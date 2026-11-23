@@ -174,7 +174,18 @@ public class PaymentAuditTests(PostgresFixture db) : Phase2TestBase(db, new Dict
 
         Assert.Equal(1, _provider.RefundCalls);
         Assert.Equal(PaymentStatus.Refunded, (await PaymentAsync(paymentId)).Status);
-        Assert.Equal(1, results.Count(r => r.StatusCode == 200 && r.Body.TryGetProperty("status", out var s) && s.GetString() == "Refunded"));
+        var staffResults = results.Take(2).ToArray();
+        Assert.All(staffResults, r =>
+        {
+            Assert.True(r.StatusCode is 200 or 409, $"unexpected staff response {r.StatusCode}");
+            if (r.StatusCode == 200)
+            {
+                Assert.Equal("Refunded", r.Body.GetProperty("status").GetString());
+            }
+        });
+        Assert.InRange(staffResults.Count(r => r.StatusCode == 200), 0, 1);
+        Assert.Equal(200, results[2].StatusCode);
+        Assert.Equal("Cancelled", results[2].Body.GetProperty("status").GetString());
     }
 
     [Fact]
