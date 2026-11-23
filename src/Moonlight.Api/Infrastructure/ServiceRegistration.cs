@@ -47,6 +47,7 @@ public static class ServiceRegistration
         var configuration = builder.Configuration;
         var services = builder.Services;
         var environment = builder.Environment;
+        services.AddTrustedForwarding(configuration);
 
         var connectionString = configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
@@ -60,6 +61,18 @@ public static class ServiceRegistration
         catch (ClinicConfigException ex)
         {
             throw new InvalidOperationException(ex.Message, ex);
+        }
+
+        if (configuration.GetValue("Demo:SeedSyntheticData", false))
+        {
+            // Hosted tests never expose records, uploads, payments or outbound messaging.
+            var features = clinic.Features.ToDictionary(pair => pair.Key, pair => pair.Value);
+            foreach (var key in new[] { "patientRecords", "onlinePayments", "pushReminders", "smsNotifications", "whatsappReminders", "recallCampaigns", "videoConsultation" })
+            {
+                features[key] = false;
+            }
+
+            clinic = clinic with { Features = features };
         }
 
         services.AddSingleton(clinic);
@@ -82,6 +95,13 @@ public static class ServiceRegistration
         if (jwt.Key.Length < 32)
         {
             throw new InvalidOperationException("Jwt:Key must be set (Jwt__Key) and at least 32 characters long.");
+        }
+
+        if (!environment.IsDevelopment() &&
+            (jwt.Key.Contains("development-only", StringComparison.OrdinalIgnoreCase) ||
+             jwt.Key.Contains("change-me", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException("Jwt:Key must not use a development signing key outside Development.");
         }
 
         // The fixed OTP is a development convenience. Gate it on the hosting environment, not just on a flag.
