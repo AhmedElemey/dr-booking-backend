@@ -62,6 +62,18 @@ public static class ServiceRegistration
             throw new InvalidOperationException(ex.Message, ex);
         }
 
+        if (configuration.GetValue("Demo:SeedSyntheticData", false))
+        {
+            // Hosted tests never expose records, uploads, payments or outbound messaging.
+            var features = clinic.Features.ToDictionary(pair => pair.Key, pair => pair.Value);
+            foreach (var key in new[] { "patientRecords", "onlinePayments", "pushReminders", "smsNotifications", "whatsappReminders", "recallCampaigns", "videoConsultation" })
+            {
+                features[key] = false;
+            }
+
+            clinic = clinic with { Features = features };
+        }
+
         services.AddSingleton(clinic);
         services.AddSingleton<FeatureService>();
 
