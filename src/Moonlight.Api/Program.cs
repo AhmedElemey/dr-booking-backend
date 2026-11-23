@@ -28,6 +28,11 @@ if (builder.Configuration.GetValue("Demo:SeedSyntheticData", false))
         throw new InvalidOperationException("Hosted demo must not have live provider credentials or console provisioning enabled.");
     }
 
+    // Demo website requests may share a server-side proxy bucket. Phone limits stay unchanged.
+    if (builder.Configuration.GetValue("RateLimits:OtpPerIpPerHour", 20) < 200)
+    {
+        builder.Configuration["RateLimits:OtpPerIpPerHour"] = "200";
+    }
     builder.Configuration["Jobs:Enabled"] = "false";
     builder.Configuration["Reminders:Enabled"] = "false";
     builder.Configuration["Sms:NotificationsEnabled"] = "false";
@@ -38,6 +43,7 @@ builder.AddMoonlight();
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages(context => Problems.WriteAsync(context.HttpContext, ErrorCodes.FromStatus(context.HttpContext.Response.StatusCode)));
 
