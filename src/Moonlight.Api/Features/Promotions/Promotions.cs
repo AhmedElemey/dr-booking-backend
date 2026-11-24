@@ -26,7 +26,8 @@ public static class CouponReasons
 
 public sealed record ValidateCouponDto(string? Code, Guid? DoctorId, Guid? ServiceId);
 
-public sealed record CouponValidationDto(bool Valid, decimal DiscountEgp, decimal TotalEgp, string? Reason);
+// TotalEgp is null while the clinic's prices are hidden (clinic switch off or publicPrices off), like every other price a patient reads.
+public sealed record CouponValidationDto(bool Valid, decimal DiscountEgp, decimal? TotalEgp, string? Reason);
 
 public sealed record PromotionDto(
     string Code,
@@ -90,6 +91,7 @@ public sealed partial class CouponService(
     CurrentUser current,
     DashboardScope scope,
     Language lang,
+    FeatureService features,
     TimeProvider clock)
 {
     [GeneratedRegex("^[A-Z0-9-]{3,20}$")]
@@ -134,7 +136,8 @@ public sealed partial class CouponService(
               ?? throw ApiException.Validation("serviceId", "The service does not exist for this doctor.")
             : null;
         var evaluation = await EvaluateAsync(request.Code, doctor, service, current.Id, ct);
-        return new CouponValidationDto(evaluation.Valid, evaluation.DiscountEgp, evaluation.Total, evaluation.Reason);
+        var pricesVisible = doctor.Clinic!.ShowPrices && features.IsEnabled(FeatureKeys.PublicPrices, doctor.Clinic.Id);
+        return new CouponValidationDto(evaluation.Valid, evaluation.DiscountEgp, pricesVisible ? evaluation.Total : null, evaluation.Reason);
     }
 
     /// <summary>Checks a coupon for one booking. The doctor must have its Clinic loaded.</summary>
