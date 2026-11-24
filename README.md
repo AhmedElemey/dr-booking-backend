@@ -158,3 +158,5 @@ Use a non-Development environment so the app does not migrate and seed while the
 
 - `src/Moonlight.Api` — the API: `Features/` (Auth, Me, Catalog, Appointments, Dashboard, Admin, Notifications, Flags for features and the console pull, Branding, plus one folder per Phase 2 feature: Holidays, Templates, WaitingList, Family, Payments, Insurance, Records, Reviews, Promotions, Recall, Reports, Video), `Domain/` (entities, `SlotGenerator`, `AppointmentRules`), `Infrastructure/` (DbContext, migrations, JWT, SMS, FCM, WhatsApp, Payments, Video, storage, dev seed), `Common/` (problem details, paging, rate limiting, clinic config)
 - `tests/Moonlight.Tests` — unit tests (slot generator, transition rules, phone parsing) and integration tests against Postgres
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for production steps, including the required Render forwarding settings.
