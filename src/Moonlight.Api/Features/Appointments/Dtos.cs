@@ -20,6 +20,9 @@ public sealed record BookAppointmentDto(
 
 public sealed record CancelAppointmentDto(string? Reason);
 
+// Staff correction of a mistaken terminal status; ToStatus is "Completed" or "NoShow".
+public sealed record CorrectStatusDto(string? ToStatus, string? Reason);
+
 public sealed record RescheduleAppointmentDto(Guid? SlotId);
 
 public sealed record DoctorRefDto(Guid Id, string? Slug, string Name, string? PhotoUrl);
