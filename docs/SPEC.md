@@ -543,10 +543,10 @@ Prod environments and secrets, real SMS provider, object storage, backups, struc
 Answered by the product owner on Nov 24, 2026. Questions 10 and 12 are still open in part.
 
 1. **Market** — Egypt only in v1: EGP, `Africa/Cairo`, Arabic default with English, `+20` mobile numbers.
-2. **Approval step** — Clinics approve a booking first. Bookings start as `Pending` (behind the `manualReview` feature, off by default) and become `Confirmed` when approved.
+2. **Approval step** — Clinics may opt in to approving bookings first. Bookings are confirmed immediately by default. With the `manualReview` feature on (off by default), they start as `Pending` and become `Confirmed` when approved.
 3. **Messaging** — WhatsApp for OTP, confirmations and reminders. No SMS in v1. Each clinic may later send from its own WhatsApp Business number (needs Meta business verification and approved templates).
 4. **Rules and defaults** — Cancel or reschedule up to 2 h before, 60 min minimum booking lead, at most 3 upcoming bookings (one per doctor per day), reminder 24 h before. No booking ban for no-shows; the lost deposit is the penalty and the no-show count is shown to the clinic.
-5. **Corrections** — Staff can fix a wrong `Completed` or `NoShow` within 24 hours. Only a clinic admin or the visit's doctor may do it. It is logged, and a corrected no-show refunds the deposit.
+5. **Corrections** — Staff can fix a wrong `Completed` or `NoShow` within 24 hours. Only a clinic admin or the visit's doctor may do it. It is logged. A correction refunds nothing.
 6. **Slot authoring** — Build both auto-fill templates and one-click day-off or vacation. Vacation comes first. Existing bookings on a vacation day are flagged, not deleted.
 7. **Doctor model** — One doctor per clinic account, one patient at a time. A doctor in several clinics gets one account per clinic.
 8. **Staff login** — WhatsApp OTP for doctors and staff, no passwords. The team onboards clinics manually for the pilot.
