@@ -57,16 +57,74 @@ public sealed class ReviewPromptProcessor(
     }
 }
 
+// A Pending booking the clinic never answered expires once its visit time arrives: it is cancelled (cancelledBy = Clinic),
+// its coupon is released and the patient is told. The claim (UPDATE ... WHERE status = 'Pending') is atomic.
+public sealed class PendingExpiryProcessor(
+    MoonlightDbContext db,
+    INotificationService notifications,
+    TimeProvider clock,
+    ILogger<PendingExpiryProcessor> logger)
+{
+    public const string ExpiredReason = "The clinic did not respond before the visit time.";
+
+    public async Task<int> RunOnceAsync(CancellationToken ct)
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        var due = await db.Appointments.AsNoTracking()
+            .Where(a => a.Status == AppointmentStatus.Pending && a.Slot!.StartsAt <= now)
+            .Select(a => a.Id)
+            .Take(200)
+            .ToListAsync(ct);
+
+        var expired = 0;
+        foreach (var id in due)
+        {
+            var claimed = await db.Appointments.Where(a => a.Id == id && a.Status == AppointmentStatus.Pending)
+                .ExecuteUpdateAsync(u => u
+                    .SetProperty(a => a.Status, AppointmentStatus.Cancelled)
+                    .SetProperty(a => a.CancelledBy, (CancelledBy?)CancelledBy.Clinic)
+                    .SetProperty(a => a.CancelReason, ExpiredReason)
+                    .SetProperty(a => a.UpdatedAt, now), ct);
+            if (claimed != 1)
+            {
+                continue;
+            }
+
+            var coupons = await db.CouponRedemptions.Where(r => r.AppointmentId == id).Select(r => r.CouponId).ToListAsync(ct);
+            if (coupons.Count > 0)
+            {
+                await db.CouponRedemptions.Where(r => r.AppointmentId == id).ExecuteDeleteAsync(ct);
+                foreach (var couponId in coupons)
+                {
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE coupons SET redemptions_count = GREATEST(redemptions_count - 1, 0) WHERE id = {couponId}", ct);
+                }
+            }
+
+            await notifications.AppointmentCancelledByClinicAsync(id, ct);
+            expired++;
+        }
+
+        if (expired > 0)
+        {
+            logger.LogInformation("Expired {Count} unanswered pending booking(s).", expired);
+        }
+
+        return expired;
+    }
+}
+
 // Everything that runs on the background tick besides reminders: waiting-list expiry, review prompts, recall campaigns.
 public sealed class MaintenanceProcessor(
     WaitingListService waitingList,
     ReviewPromptProcessor reviewPrompts,
+    PendingExpiryProcessor pendingExpiry,
     RecallService recall,
     ILogger<MaintenanceProcessor> logger)
 {
     public async Task RunOnceAsync(CancellationToken ct)
     {
         await GuardAsync("waiting-list expiry", () => waitingList.ExpireAsync(ct));
+        await GuardAsync("pending expiry", () => pendingExpiry.RunOnceAsync(ct));
         await GuardAsync("review prompts", () => reviewPrompts.RunOnceAsync(ct));
         await GuardAsync("recall campaigns", () => recall.RunDueAsync(ct));
     }
