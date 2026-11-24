@@ -26,5 +26,8 @@ public class Clinic
 
     public bool IsActive { get; set; } = true;
 
+    // When false, public catalog responses hide consultation and service prices.
+    public bool ShowPrices { get; set; } = true;
+
     public DateTime CreatedAt { get; set; }
 }
