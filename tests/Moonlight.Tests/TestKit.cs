@@ -140,12 +140,12 @@ public sealed class TestWorld(MoonlightApiFactory factory)
             return doctor;
         });
 
-    public Task<User> NewStaffAsync(Clinic clinic) =>
+    public Task<User> NewStaffAsync(Clinic clinic, bool isAdmin = false) =>
         WithDbAsync(async db =>
         {
             var user = new User { Phone = NewPhone(), FullName = "Staff", Role = UserRole.ClinicStaff, CreatedAt = Factory.Clock.UtcNow };
             db.Users.Add(user);
-            db.ClinicStaff.Add(new ClinicStaff { UserId = user.Id, ClinicId = clinic.Id });
+            db.ClinicStaff.Add(new ClinicStaff { UserId = user.Id, ClinicId = clinic.Id, IsAdmin = isAdmin });
             await db.SaveChangesAsync();
             return user;
         });
