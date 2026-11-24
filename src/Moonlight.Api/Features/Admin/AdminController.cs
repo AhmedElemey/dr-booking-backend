@@ -76,4 +76,12 @@ public class AdminController(AdminService admin) : ControllerBase
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
     public Task<AdminUserDto> SetUserActive(Guid id, SetActiveDto request, CancellationToken ct) =>
         admin.SetUserActiveAsync(id, request.IsActive, ct);
+
+    /// <summary>Grant or revoke the clinic-admin flag on a clinic staff account. Only ClinicStaff accounts carry the flag.</summary>
+    [HttpPatch("users/{id:guid}/admin")]
+    [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    public Task<AdminUserDto> SetStaffAdmin(Guid id, SetAdminDto request, CancellationToken ct) =>
+        admin.SetStaffAdminAsync(id, request.IsAdmin, ct);
 }
