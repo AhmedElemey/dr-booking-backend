@@ -26,6 +26,28 @@ public sealed class TrustedForwardingTests(PostgresFixture db) : IClassFixture<P
         Assert.Equal(expected, result.Connection.RemoteIpAddress?.ToString());
     }
 
+    [Fact]
+    public async Task Forged_leftmost_forwarded_for_does_not_change_the_client_ip()
+    {
+        // Shape measured on Render: sender ::1, then client, Cloudflare, 10.x hop.
+        var settings = new Dictionary<string, string?>
+        {
+            ["ReverseProxy:ForwardLimit"] = "3",
+            ["ReverseProxy:KnownProxies:0"] = "::1",
+            ["ReverseProxy:KnownNetworks:0"] = "10.0.0.0/8",
+            ["ReverseProxy:KnownNetworks:1"] = "172.64.0.0/13",
+        };
+        await using var factory = new MoonlightApiFactory(db.ConnectionString, settings: settings);
+        using var client = factory.CreateClient();
+        var result = await factory.Server.SendAsync(context =>
+        {
+            context.Connection.RemoteIpAddress = IPAddress.Parse("::1");
+            context.Request.Path = "/health";
+            context.Request.Headers["X-Forwarded-For"] = "1.2.3.4,203.0.113.9, 172.70.108.104, 10.24.205.99";
+        });
+        Assert.Equal("203.0.113.9", result.Connection.RemoteIpAddress?.ToString());
+    }
+
     [Theory]
     [InlineData("development-only-signing-key-0123456789abcdef")]
     [InlineData("CHANGE-ME-signing-key-0123456789abcdef")]
