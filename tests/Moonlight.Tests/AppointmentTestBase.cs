@@ -31,6 +31,8 @@ public abstract class AppointmentTestBase(PostgresFixture db, Dictionary<string,
 
     protected Session Staff { get; private set; } = null!;
 
+    protected Session ClinicAdmin { get; private set; } = null!;
+
     protected Session DoctorSession { get; private set; } = null!;
 
     protected DateTime Now => Factory.Clock.UtcNow;
@@ -50,6 +52,7 @@ public abstract class AppointmentTestBase(PostgresFixture db, Dictionary<string,
         Doctor = await World.NewDoctorAsync(Clinic);
         Service = await World.NewServiceAsync(Doctor);
         Staff = await World.LoginAsync(await World.NewStaffAsync(Clinic));
+        ClinicAdmin = await World.LoginAsync(await World.NewStaffAsync(Clinic, isAdmin: true));
         DoctorSession = await World.LoginAsync((await World.WithDbAsync(d => d.Users.FindAsync(Doctor.UserId).AsTask()))!);
     }
 
