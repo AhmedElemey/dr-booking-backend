@@ -538,18 +538,22 @@ Prod environments and secrets, real SMS provider, object storage, backups, struc
 
 ---
 
-## 9. Open questions for the product owner
+## 9. Product decisions
 
-1. **Market** — Confirm Egypt: EGP display, `Africa/Cairo`, Arabic default with English, Egyptian mobile numbers only (`+20 1x`). Any other country or number format in v1?
-2. **Approval step** — Spec books instantly as `Confirmed`. Do clinics need to approve requests first (adds a `Pending` status and a confirm action)?
-3. **SMS** — OTP needs an SMS (or WhatsApp) provider regardless; which one and what budget? Should reminders and confirmations also go by SMS for website and phone-in patients (who have no push), or push-only for v1?
-4. **Rules and defaults** — Patient cancel/reschedule window (default 2h), minimum booking lead time (60 min), booking limit (3 upcoming, 1 per doctor per day), reminder timing (24h only?). How far ahead patients can book is simply how far ahead the doctor has created slots. Is a no-show penalty or booking block wanted (spec: none)?
-5. **Corrections** — Should staff be able to fix a mistaken `Completed`/`NoShow` (currently terminal)?
-6. **Slot authoring** — The bulk helper creates rows once (no rolling auto-extension). Is a "keep the next N weeks stocked" template needed, or a clinic-wide action to remove slots for all doctors on a holiday?
-7. **Doctor model** — Doctors in more than one clinic, or a clinic with several chairs per doctor? (v1: one clinic, one appointment at a time per doctor.)
-8. **Staff login** — Is phone OTP acceptable for doctors and staff, or do they want email + password? Is manual onboarding by the Moonlight admin acceptable for the pilot?
-9. **Pricing display** — Show doctor fee / service price publicly, or hide prices until the clinic confirms them?
-10. **Content & brand** — Arabic/English copy owner, logo, colors, domain names, store listing accounts (Apple/Google) and Firebase project ownership.
-11. **Privacy & hosting** — Hosting region (in-Egypt vs. EU), consent text, and data retention under Egypt's Personal Data Protection Law (No. 151 of 2020); appointment data with a dentist may be treated as health-related. Needs legal review before launch.
-12. **Hosting and budget** — Preferred cloud/host for the API, Postgres, object storage and the website (e.g. Vercel vs. container), and monthly budget.
-13. **Visit type** — Should patients choose a treatment type before seeing slots (which would imply slot lengths per service), or is it optional/informational as in this spec (slot length is whatever the clinic created)?
+Answered by the product owner on Nov 24, 2026. Questions 10 and 12 are still open in part.
+
+1. **Market** — Egypt only in v1: EGP, `Africa/Cairo`, Arabic default with English, `+20` mobile numbers.
+2. **Approval step** — Clinics approve a booking first. Bookings start as `Pending` (behind the `manualReview` feature, off by default) and become `Confirmed` when approved.
+3. **Messaging** — WhatsApp for OTP, confirmations and reminders. No SMS in v1. Each clinic may later send from its own WhatsApp Business number (needs Meta business verification and approved templates).
+4. **Rules and defaults** — Cancel or reschedule up to 2 h before, 60 min minimum booking lead, at most 3 upcoming bookings (one per doctor per day), reminder 24 h before. No booking ban for no-shows; the lost deposit is the penalty and the no-show count is shown to the clinic.
+5. **Corrections** — Staff can fix a wrong `Completed` or `NoShow` within 24 hours. Only a clinic admin or the visit's doctor may do it. It is logged, and a corrected no-show refunds the deposit.
+6. **Slot authoring** — Build both auto-fill templates and one-click day-off or vacation. Vacation comes first. Existing bookings on a vacation day are flagged, not deleted.
+7. **Doctor model** — One doctor per clinic account, one patient at a time. A doctor in several clinics gets one account per clinic.
+8. **Staff login** — WhatsApp OTP for doctors and staff, no passwords. The team onboards clinics manually for the pilot.
+9. **Pricing display** — Public by default. Prices show only when the super-admin feature `publicPrices` is on for the clinic and the clinic's `ShowPrices` is on.
+10. **Content and brand** — Decided so far: the app is named Dr booking. Firebase and other accounts stay under the owner's personal account for now and move to the company later. The owner opens the Play and App Store accounts. Copy, logo, colours and domains are still open.
+11. **Privacy** — A consent text and retention policy are drafted for review by a legal specialist before any real clinic (Egypt Personal Data Protection Law No. 151 of 2020). The recommended hosting region is Frankfurt; the final choice is open (see 12).
+12. **Hosting and budget** — Open. The owner deferred it until the end.
+13. **Visit type** — Optional and informational in v1. Slot length is whatever the clinic created. Per-type durations come after the first clinics.
+
+The super admin controls every feature per clinic, including booking approval, price visibility and the deposit amount. New features ship behind a flag.
