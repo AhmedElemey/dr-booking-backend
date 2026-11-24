@@ -47,6 +47,7 @@
     "reviews": true,
     "promotions": true,
     "recallCampaigns": false,
-    "reports": true
+    "reports": true,
+    "manualReview": false
   }
 }
