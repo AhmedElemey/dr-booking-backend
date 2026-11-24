@@ -99,6 +99,33 @@ public class CouponTests(PostgresFixture db) : Phase2TestBase(db)
         who.PostAsync("/api/v1/coupons/validate", new { code, doctorId = Doctor.Id, serviceId = serviceId ?? Service.Id });
 
     [Fact]
+    public async Task Validate_leaves_out_the_total_while_the_clinic_hides_prices()
+    {
+        Enable(FeatureKeys.Promotions);
+        await NewCouponAsync("HIDE10");
+        var patient = await World.NewPatientAsync();
+        Assert.Equal(270m, (await ValidateAsync(patient, "HIDE10"))["totalEgp"].GetDecimal());
+
+        await World.WithDbAsync(async d =>
+        {
+            (await d.Clinics.FindAsync(Clinic.Id))!.ShowPrices = false;
+            return await d.SaveChangesAsync();
+        });
+        var hidden = await ValidateAsync(patient, "HIDE10");
+        Assert.True(hidden["valid"].GetBoolean());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, hidden.Body.GetProperty("totalEgp").ValueKind);
+
+        await World.WithDbAsync(async d =>
+        {
+            (await d.Clinics.FindAsync(Clinic.Id))!.ShowPrices = true;
+            return await d.SaveChangesAsync();
+        });
+        Disable(FeatureKeys.PublicPrices);
+        var locked = await ValidateAsync(patient, "HIDE10");
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, locked.Body.GetProperty("totalEgp").ValueKind);
+    }
+
+    [Fact]
     public async Task Percent_coupon_validates_and_books_with_the_discount_then_cancel_releases_it()
     {
         Enable(FeatureKeys.Promotions);
