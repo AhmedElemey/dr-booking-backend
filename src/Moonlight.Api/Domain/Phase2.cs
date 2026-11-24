@@ -174,6 +174,13 @@ public enum PaymentMethod
     Cash,
 }
 
+/// <summary>What a payment covers: the full visit price, or a booking deposit (the rest is settled at the clinic).</summary>
+public enum PaymentKind
+{
+    Full,
+    Deposit,
+}
+
 /// <summary>What the appointment DTOs report: Unpaid when there is no live payment.</summary>
 public enum AppointmentPaymentStatus
 {
@@ -196,6 +203,9 @@ public class Payment
     public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
 
     public PaymentMethod Method { get; set; }
+
+    // Rows that predate deposits are Full.
+    public PaymentKind Kind { get; set; } = PaymentKind.Full;
 
     public required string Provider { get; set; }
 
