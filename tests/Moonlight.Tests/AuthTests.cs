@@ -24,18 +24,18 @@ public class AuthTests(PostgresFixture db) : IClassFixture<PostgresFixture>, IAs
         return System.Text.RegularExpressions.Regex.Match(message, @"\d{6}").Value;
     }
 
-    private void SetWhatsappReminders(bool on)
+    private void SetWhatsappOtp(bool on)
     {
         var service = _factory.Services.GetRequiredService<Api.Features.Flags.FeatureService>();
         var features = service.Current.Features.ToDictionary(f => f.Key, f => f.Value);
-        features[Api.Features.Flags.FeatureKeys.WhatsappReminders] = on;
+        features[Api.Features.Flags.FeatureKeys.WhatsappOtp] = on;
         service.Apply(features, Api.Features.Flags.FeatureSources.Console, DateTime.UtcNow);
     }
 
     [Fact]
-    public async Task Login_code_goes_by_sms_while_whatsappReminders_is_off()
+    public async Task Login_code_goes_by_sms_while_whatsappOtp_is_off()
     {
-        SetWhatsappReminders(false);
+        SetWhatsappOtp(false);
         var phone = TestWorld.NewPhone();
 
         Assert.Equal(204, (await _world.Anonymous().PostAsync("/api/v1/auth/otp/request", new { phone })).StatusCode);
@@ -45,9 +45,9 @@ public class AuthTests(PostgresFixture db) : IClassFixture<PostgresFixture>, IAs
     }
 
     [Fact]
-    public async Task Login_code_goes_by_whatsapp_when_whatsappReminders_is_on_and_verifies()
+    public async Task Login_code_goes_by_whatsapp_when_whatsappOtp_is_on_and_verifies()
     {
-        SetWhatsappReminders(true);
+        SetWhatsappOtp(true);
         var phone = TestWorld.NewPhone();
 
         Assert.Equal(204, (await _world.Anonymous().PostAsync("/api/v1/auth/otp/request", new { phone })).StatusCode);
@@ -63,7 +63,7 @@ public class AuthTests(PostgresFixture db) : IClassFixture<PostgresFixture>, IAs
     [Fact]
     public async Task Login_code_falls_back_to_sms_when_whatsapp_fails()
     {
-        SetWhatsappReminders(true);
+        SetWhatsappOtp(true);
         _factory.WhatsApp.Fail = true;
         var phone = TestWorld.NewPhone();
 
