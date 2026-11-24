@@ -25,6 +25,7 @@ public static class FeatureKeys
     public const string Promotions = "promotions";
     public const string RecallCampaigns = "recallCampaigns";
     public const string Reports = "reports";
+    public const string ManualReview = "manualReview";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -49,6 +50,7 @@ public static class FeatureKeys
         Promotions,
         RecallCampaigns,
         Reports,
+        ManualReview,
     ];
 }
 
