@@ -17,6 +17,7 @@ feature (`[RequireFeature(...)]`), and silently ignores feature-specific booking
 | waitingList | false |
 | familyAccounts | false |
 | whatsappReminders | false |
+| whatsappOtp | false |
 | onlinePayments | false |
 | insurance | false |
 | holidayCalendar | false |
