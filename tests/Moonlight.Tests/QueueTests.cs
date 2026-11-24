@@ -7,10 +7,11 @@ namespace Moonlight.Tests;
 
 // Live queue: check-in on the day, one patient with the doctor at a time, the queue ordered for staff,
 // and the patient sees their position. Behind the liveQueue feature.
-public class QueueTests(PostgresFixture db) : Phase2TestBase(db)
+public class QueueTests(PostgresFixture db) : Phase2TestBase(db, new Dictionary<string, string?> { ["Jwt:AccessTokenMinutes"] = "2880" })
 {
     private const string QueueUrl = "/api/v1/dashboard/appointments/queue";
 
+    // The pinned clock can be hours behind the real one, and JWT expiry is checked against the real clock, so tokens get a long lifetime here.
     // Fixed at 12:00 Cairo time so the +2h/+3h slots never cross the clinic-local midnight, whatever time CI runs.
     protected override DateTimeOffset? PinnedNow
     {
