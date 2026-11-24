@@ -224,8 +224,8 @@ public sealed class AppointmentService(
 
     /// <summary>
     /// Corrects a mistaken terminal status (Completed &lt;-&gt; NoShow) within 24 hours of closing the visit.
-    /// Every correction is audit-logged; a corrected no-show refunds the paid online payment (the deposit)
-    /// and drops out of the patient's no-show count.
+    /// Only a clinic admin or the visit's own doctor may correct. Every correction is audit-logged and a corrected
+    /// no-show drops out of the patient's no-show count. No payment is refunded: money is settled by hand.
     /// </summary>
     public async Task<DashboardAppointmentDto> CorrectStatusAsync(Guid id, CorrectStatusDto request, CancellationToken ct)
     {
@@ -236,13 +236,16 @@ public sealed class AppointmentService(
 
         ValidateReason(request.Reason);
         var appointment = await LoadScopedAsync(id, ct);
+        await EnsureMayCorrectAsync(ct);
         var from = appointment.Status;
         if (from == to || from is not (AppointmentStatus.Completed or AppointmentStatus.NoShow))
         {
             throw new ApiException(ErrorCodes.InvalidTransition, "Only a completed or no-show visit can be corrected.");
         }
 
-        if (Now - appointment.UpdatedAt > CorrectionWindow)
+        // The window runs from when the visit was closed (rows closed before ClosedAt existed fall back to their last update).
+        var closedAt = appointment.ClosedAt ?? appointment.CompletedAt ?? appointment.UpdatedAt;
+        if (Now - closedAt > CorrectionWindow)
         {
             throw new ApiException(ErrorCodes.InvalidTransition, "Status corrections are allowed within 24 hours of closing the visit.");
         }
@@ -260,12 +263,22 @@ public sealed class AppointmentService(
             CreatedAt = Now,
         });
         await SaveTransitionAsync(ct);
-        if (from == AppointmentStatus.NoShow && to == AppointmentStatus.Completed)
+        return await GetDashboardAsync(id, ct);
+    }
+
+    /// <summary>The visit's own doctor (visits of other doctors are not visible to them) or a clinic admin; reception is refused with 403.</summary>
+    private async Task EnsureMayCorrectAsync(CancellationToken ct)
+    {
+        if (current.Role == UserRole.Doctor)
         {
-            await payments.RefundForNoShowCorrectionAsync(appointment.Id, ct);
+            return;
         }
 
-        return await GetDashboardAsync(id, ct);
+        var userId = current.Id;
+        if (!await db.ClinicStaff.AsNoTracking().AnyAsync(s => s.UserId == userId && s.IsAdmin, ct))
+        {
+            throw new ApiException(ErrorCodes.Forbidden, "Only a clinic admin or the visit's doctor can correct a visit status.");
+        }
     }
 
     // ---- Core ---------------------------------------------------------------------------------------------------
@@ -282,6 +295,7 @@ public sealed class AppointmentService(
 
         appointment.Status = target;
         appointment.UpdatedAt = Now;
+        appointment.ClosedAt = Now;
         if (target == AppointmentStatus.Completed)
         {
             appointment.CompletedAt = Now;
