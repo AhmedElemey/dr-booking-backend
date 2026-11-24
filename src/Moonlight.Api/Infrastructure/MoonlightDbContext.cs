@@ -264,6 +264,7 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.Property(p => p.AmountEgp).HasPrecision(10, 2);
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(p => p.Method).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.Kind).HasConversion<string>().HasMaxLength(20);
             e.Property(p => p.Provider).HasMaxLength(40);
             e.Property(p => p.ProviderRef).HasMaxLength(200);
             e.Property(p => p.ProviderTransactionId).HasMaxLength(200);
