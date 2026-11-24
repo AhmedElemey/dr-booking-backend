@@ -56,8 +56,9 @@ public class QueueTests(PostgresFixture db) : Phase2TestBase(db)
     public async Task Start_requires_check_in_and_the_doctor_sees_one_patient_at_a_time()
     {
         Enable(FeatureKeys.LiveQueue);
-        var (first, _) = await BookedTodayAsync(TimeSpan.FromHours(2));
-        var (second, secondPatient) = await BookedTodayAsync(TimeSpan.FromHours(3));
+        // Both visits stay inside the clinic-local day for most of the day (a +3h slot crossed midnight in the evening and made check-in answer 409).
+        var (first, _) = await BookedTodayAsync(TimeSpan.FromMinutes(45));
+        var (second, secondPatient) = await BookedTodayAsync(TimeSpan.FromMinutes(90));
 
         // Start before check-in is rejected.
         Assert.Equal(409, (await Staff.PostAsync($"{Dash(first)}/start")).StatusCode);
