@@ -315,6 +315,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("clinic_id");
 
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_admin");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");

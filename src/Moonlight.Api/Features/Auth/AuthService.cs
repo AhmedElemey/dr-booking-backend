@@ -180,7 +180,7 @@ public sealed class AuthService(
     private async Task<AuthResponse> IssueAsync(User user, Guid familyId, bool isNew, CancellationToken ct)
     {
         var now = clock.GetUtcNow().UtcDateTime;
-        var (clinicId, doctorId) = await db.LoadAsync(user, ct);
+        var (clinicId, doctorId, isClinicAdmin) = await db.LoadScopeAsync(user, ct);
 
         var refresh = TokenService.NewRefreshToken();
         db.RefreshTokens.Add(new RefreshToken
@@ -193,7 +193,7 @@ public sealed class AuthService(
         });
         await db.SaveChangesAsync(ct);
 
-        var dto = new UserDto(user.Id, user.Phone, user.FullName, user.Role, user.PreferredLanguage, clinicId, doctorId, user.WhatsAppOptIn, user.MarketingOptIn);
+        var dto = new UserDto(user.Id, user.Phone, user.FullName, user.Role, user.PreferredLanguage, clinicId, doctorId, isClinicAdmin, user.WhatsAppOptIn, user.MarketingOptIn);
         return new AuthResponse(tokens.CreateAccessToken(user, clinicId, doctorId), refresh, tokens.AccessTokenSeconds, isNew, dto);
     }
 }
