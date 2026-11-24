@@ -28,12 +28,15 @@ public class NotificationTests(PostgresFixture db) : AppointmentTestBase(db)
 
         var id = await World.BookAsync(patient, await SlotAsync(TimeSpan.FromDays(1)));
 
-        var (tokens, message) = Assert.Single(Factory.Push.Sent);
+        // Booking sends the received push; approving through the dashboard (inside BookAsync) sends the confirmation.
+        Assert.Equal(2, Factory.Push.Sent.Count);
+        var (tokens, message) = Factory.Push.Sent[^1];
         Assert.Equal(["device-1", "device-2"], tokens.Order());
         Assert.Equal("Appointment confirmed", message.Title);
         Assert.Contains("Dr Test", message.Body);
         Assert.Equal("appointment.confirmed", message.Data["type"]);
         Assert.Equal(id.ToString(), message.Data["appointmentId"]);
+        Assert.Equal("appointment.received", Factory.Push.Sent[0].Message.Data["type"]);
     }
 
     [Fact]
@@ -41,7 +44,7 @@ public class NotificationTests(PostgresFixture db) : AppointmentTestBase(db)
     {
         await BookWithDeviceAsync(TimeSpan.FromDays(1));
 
-        Assert.Equal("تم تأكيد حجزك", Assert.Single(Factory.Push.Sent).Message.Title);
+        Assert.Equal("تم تأكيد حجزك", Factory.Push.Sent[^1].Message.Title);
     }
 
     [Fact]
@@ -124,8 +127,9 @@ public class NotificationTests(PostgresFixture db) : AppointmentTestBase(db)
         await world.BookAsync(withoutDevice, await world.NewSlotAsync(doctor, TimeSpan.FromDays(1)));
         await world.BookAsync(withDevice, await world.NewSlotAsync(doctor, TimeSpan.FromDays(2)));
 
-        Assert.Equal(withoutDevice.User!.Phone, Assert.Single(factory.Sms.Sent).Phone);
-        Assert.Single(factory.Push.Sent);
+        Assert.Equal(2, factory.Sms.Sent.Count);
+        Assert.All(factory.Sms.Sent, sms => Assert.Equal(withoutDevice.User!.Phone, sms.Phone));
+        Assert.Equal(2, factory.Push.Sent.Count);
     }
 }
 
