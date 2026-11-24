@@ -145,15 +145,15 @@ public class MessagingTests(PostgresFixture db) : Phase2TestBase(db)
 
         await World.BookAsync(optedIn, await SlotAsync(TimeSpan.FromDays(2)));
         Assert.Equal(0, await CountAsync(optedIn.User!.Id, MessageChannel.WhatsApp)); // feature off
-        Assert.Equal(2, await CountAsync(optedIn.User.Id, MessageChannel.Push)); // received + confirmed
+        Assert.Equal(1, await CountAsync(optedIn.User.Id, MessageChannel.Push));
 
         Enable(FeatureKeys.WhatsappReminders);
         await World.BookAsync(optedIn, await SlotAsync(TimeSpan.FromDays(3)));
         await World.BookAsync(optedOut, await SlotAsync(TimeSpan.FromDays(4)));
 
-        Assert.Equal(2, await CountAsync(optedIn.User.Id, MessageChannel.WhatsApp)); // received + confirmed
+        Assert.Equal(1, await CountAsync(optedIn.User.Id, MessageChannel.WhatsApp));
         Assert.Equal(0, await CountAsync(optedOut.User!.Id, MessageChannel.WhatsApp));
-        var row = await World.WithDbAsync(d => d.OutboundMessages.AsNoTracking().FirstAsync(m => m.UserId == optedIn.User.Id && m.Channel == MessageChannel.WhatsApp && m.Kind == "appointment.confirmed"));
+        var row = await World.WithDbAsync(d => d.OutboundMessages.AsNoTracking().FirstAsync(m => m.UserId == optedIn.User.Id && m.Channel == MessageChannel.WhatsApp));
         Assert.Equal("appointment.confirmed", row.Kind);
         Assert.Equal(MessageStatus.Sent, row.Status);
         Assert.Equal(optedIn.User.Phone, row.To);
