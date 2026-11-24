@@ -11,6 +11,7 @@
   <!-- Clinic identity: shipped next to the binaries (and so into the Docker image via publish). -->
   <ItemGroup>
     <Content Include="..\..\clinic.config.json" Link="clinic.config.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\clinic.config.demo.json" Link="clinic.config.demo.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\clinic.config.schema.json" Link="clinic.config.schema.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\branding\**" Link="branding\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

@@ -6,7 +6,7 @@ COPY tests/Moonlight.Tests/Moonlight.Tests.csproj tests/Moonlight.Tests/
 RUN dotnet restore src/Moonlight.Api/Moonlight.Api.csproj
 COPY src/ src/
 # Clinic identity (name, colours, logo, default features) read at startup.
-COPY clinic.config.json clinic.config.schema.json ./
+COPY clinic.config.json clinic.config.demo.json clinic.config.schema.json ./
 COPY branding/ branding/
 RUN dotnet publish src/Moonlight.Api/Moonlight.Api.csproj -c Release -o /app --no-restore
 
