@@ -13,7 +13,7 @@ public class BookingTests(PostgresFixture db) : AppointmentTestBase(db)
         var response = await patient.PostAsync("/api/v1/appointments", new { slotId = slot.Id, serviceId = Service.Id, patientNote = "  tooth pain " });
 
         Assert.Equal(201, response.StatusCode);
-        Assert.Equal("Pending", response["status"].GetString());
+        Assert.Equal("Confirmed", response["status"].GetString());
         Assert.Equal(slot.Id, response["slotId"].GetGuid());
         Assert.Equal("tooth pain", response["patientNote"].GetString());
         Assert.Equal(slot.StartsAt, response["startsAt"].GetDateTime().ToUniversalTime());
