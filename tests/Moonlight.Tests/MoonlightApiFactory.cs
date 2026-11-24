@@ -85,6 +85,9 @@ public sealed class TestClock : TimeProvider
 
     public void Advance(TimeSpan by) => _now += by;
 
+    // Pins the clock (used before anything is logged in) so a test never depends on the time of day.
+    public void Set(DateTimeOffset now) => _now = now;
+
     // The next 15-minute boundary at least `from now` away: always a valid slot start.
     public DateTime SlotStart(TimeSpan fromNow)
     {
