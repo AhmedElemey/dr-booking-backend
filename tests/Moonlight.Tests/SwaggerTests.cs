@@ -137,6 +137,9 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "GET /api/v1/dashboard/reports/revenue",
         "GET /api/v1/appointments/{id}/video",
         "GET /api/v1/dashboard/appointments/{id}/video",
+        "GET /api/v1/dashboard/appointments/queue",
+        "POST /api/v1/dashboard/appointments/{id}/check-in",
+        "POST /api/v1/dashboard/appointments/{id}/start",
     ];
 
     private static readonly string[] Anonymous =
