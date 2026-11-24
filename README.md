@@ -97,6 +97,7 @@ Public endpoints (anonymous):
 | `workingHoursTemplates` | template CRUD and `slots/apply-template` 403 |
 | `waitingList` | waiting-list endpoints 403; no waiting-list notifications |
 | `familyAccounts` | `/me/family` 403; `familyMemberId` on booking is ignored |
+| `whatsappOtp` | Login codes are sent by SMS (with it on, by WhatsApp, falling back to SMS if that fails) |
 | `whatsappReminders` | `dashboard/messages` 403; nothing is sent over WhatsApp (the outbox still logs push and SMS) |
 | `onlinePayments` | pay, payment and webhook endpoints 403; price fields stay in the DTOs |
 | `insurance` | insurance endpoints 403; `insurance` on booking ignored; `insuranceProviders` is `[]` |

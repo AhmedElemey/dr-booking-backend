@@ -145,6 +145,9 @@ public sealed class WhatsAppOptions
 
     // Approved template name per message kind (keys confirmed, cancelled, reminder, waitlist, review, recall; empty keeps the built-in default name).
     public Dictionary<string, string> Templates { get; set; } = [];
+
+    // Approved authentication template for login codes, used only while the whatsappOtp feature is on. Its single body parameter is the code.
+    public string OtpTemplate { get; set; } = "otp_code";
 }
 
 public sealed class JitsiOptions

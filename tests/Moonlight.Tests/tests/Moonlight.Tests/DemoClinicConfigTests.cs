@@ -47,7 +47,7 @@ public sealed class DemoClinicConfigTests
             Assert.True(demo[key]!.GetValue<bool>(), $"{key} should be on in the demo config");
         }
 
-        string[] off = ["patientRecords", "onlinePayments", "recallCampaigns", "whatsappReminders", "smsNotifications", "videoConsultation"];
+        string[] off = ["patientRecords", "onlinePayments", "recallCampaigns", "whatsappReminders", "whatsappOtp", "smsNotifications", "videoConsultation"];
         foreach (var key in off)
         {
             Assert.False(demo[key]!.GetValue<bool>(), $"{key} should stay off in the demo config");

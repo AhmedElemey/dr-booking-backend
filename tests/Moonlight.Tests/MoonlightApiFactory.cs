@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Moonlight.Api.Infrastructure.Fcm;
 using Moonlight.Api.Infrastructure.Sms;
+using Moonlight.Api.Infrastructure.WhatsApp;
 
 namespace Moonlight.Tests;
 
@@ -37,6 +38,11 @@ public sealed class MoonlightApiFactory : WebApplicationFactory<Program>
     public RecordingPushSender Push { get; } = new();
 
     public RecordingSmsSender Sms { get; } = new();
+
+    public RecordingWhatsAppSender WhatsApp { get; } = new();
+
+    // Off by default so the provider-guard tests keep the real configured sender; AuthTests turns it on.
+    public bool RecordWhatsApp { get; init; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -70,6 +76,12 @@ public sealed class MoonlightApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IPushSender>(Push);
             services.RemoveAll<ISmsSender>();
             services.AddSingleton<ISmsSender>(Sms);
+            if (RecordWhatsApp)
+            {
+                services.RemoveAll<IWhatsAppSender>();
+                services.AddSingleton<IWhatsAppSender>(WhatsApp);
+            }
+
             _configureServices?.Invoke(services);
         });
     }
@@ -172,5 +184,38 @@ public sealed class RecordingSmsSender : ISmsSender
         }
 
         return Task.CompletedTask;
+    }
+}
+
+public sealed class RecordingWhatsAppSender : IWhatsAppSender
+{
+    private readonly List<(string Phone, string Template, string Language, IReadOnlyList<string> Parameters)> _sent = [];
+
+    public bool Fail { get; set; }
+
+    public IReadOnlyList<(string Phone, string Template, string Language, IReadOnlyList<string> Parameters)> Sent
+    {
+        get
+        {
+            lock (_sent)
+            {
+                return _sent.ToList();
+            }
+        }
+    }
+
+    public Task<WhatsAppResult> SendAsync(string phone, string templateName, string language, IReadOnlyList<string> parameters, CancellationToken ct = default)
+    {
+        if (Fail)
+        {
+            throw new InvalidOperationException("provider down");
+        }
+
+        lock (_sent)
+        {
+            _sent.Add((phone, templateName, language, parameters));
+        }
+
+        return Task.FromResult(new WhatsAppResult("mock-" + Guid.NewGuid().ToString("N")));
     }
 }

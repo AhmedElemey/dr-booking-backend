@@ -3,9 +3,11 @@ using Microsoft.Extensions.Options;
 
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
+using Moonlight.Api.Features.Flags;
 using Moonlight.Api.Infrastructure;
 using Moonlight.Api.Infrastructure.Auth;
 using Moonlight.Api.Infrastructure.Sms;
+using Moonlight.Api.Infrastructure.WhatsApp;
 
 namespace Moonlight.Api.Features.Auth;
 
@@ -16,6 +18,9 @@ public sealed class AuthService(
     MoonlightDbContext db,
     TokenService tokens,
     ISmsSender sms,
+    IWhatsAppSender whatsApp,
+    IOptions<WhatsAppOptions> whatsAppOptions,
+    FeatureService features,
     ClinicConfig clinic,
     TimeProvider clock,
     ILogger<AuthService> logger,
@@ -40,6 +45,22 @@ public sealed class AuthService(
             ExpiresAt = now.AddMinutes(OtpTtlMinutes),
         });
         await db.SaveChangesAsync(ct);
+
+        // With whatsappOtp on, the code goes out on WhatsApp (decision 3: no SMS). If WhatsApp fails, SMS is the fallback so login never breaks.
+        if (features.IsEnabled(FeatureKeys.WhatsappOtp))
+        {
+            var settings = whatsAppOptions.Value;
+            var template = string.IsNullOrWhiteSpace(settings.OtpTemplate) ? "otp_code" : settings.OtpTemplate;
+            try
+            {
+                await whatsApp.SendAsync(phone, template, settings.LanguageCodeAr, [code], ct);
+                return;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "WhatsApp login code failed for {Phone}; falling back to SMS.", PhoneNumber.Mask(phone));
+            }
+        }
 
         await sms.SendAsync(phone, $"رمز التحقق الخاص بك في {clinic.Name.Ar}: {code} / Your {clinic.Name.En} code: {code}", ct);
     }
