@@ -30,6 +30,11 @@ public sealed record ClinicConfig(
 {
     /// <summary>Absolute path of the logo file; set by the loader.</summary>
     public string LogoPath { get; init; } = "";
+
+    /// <summary>Fixed booking deposit in EGP; 0 (the default) disables deposits. When over 0 and online
+    /// payments are on, the first online checkout of a booked appointment charges this much (capped at
+    /// the visit price) and the rest is settled at the clinic.</summary>
+    public decimal DepositAmountEgp { get; init; }
 }
 
 public sealed class ClinicConfigException(string message) : Exception(message);
@@ -119,6 +124,11 @@ public static partial class ClinicConfigLoader
             {
                 errors.Add($"{field} must be at most {max} characters.");
             }
+        }
+
+        if (config.DepositAmountEgp < 0)
+        {
+            errors.Add("depositAmountEgp must be 0 or more.");
         }
 
         Text(config.Slug, "slug", 40);
