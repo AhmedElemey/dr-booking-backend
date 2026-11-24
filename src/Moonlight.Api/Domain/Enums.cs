@@ -17,6 +17,8 @@ public enum SlotStatus
 
 public enum AppointmentStatus
 {
+    // A patient booking waits for the clinic to approve it before it is Confirmed.
+    Pending,
     Confirmed,
     Cancelled,
     Completed,
