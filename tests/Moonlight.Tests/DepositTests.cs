@@ -79,13 +79,14 @@ public class DepositTests(PostgresFixture db) : Phase2TestBase(db, new Dictionar
 
         Assert.Equal(200, (await WebhookAsync(paymentId, true)).StatusCode);
         var after = await patient.GetAsync(Patient(id));
-        Assert.Equal("Paid", after["paymentStatus"].GetString());
+        Assert.Equal("DepositPaid", after["paymentStatus"].GetString());
         Assert.Equal(100m, after["depositPaidEgp"].GetDecimal());
 
         // Staff see the same deposit fields.
         var staffView = await Staff.GetAsync(Dash(id));
         Assert.Equal(100m, staffView["depositRequiredEgp"].GetDecimal());
         Assert.Equal(100m, staffView["depositPaidEgp"].GetDecimal());
+        Assert.Equal("DepositPaid", staffView["paymentStatus"].GetString());
 
         // The remainder is settled at the clinic: no second online checkout.
         var again = await patient.PostAsync($"{Patient(id)}/pay", new { returnUrl = ReturnUrl });
