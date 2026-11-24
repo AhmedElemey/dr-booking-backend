@@ -80,7 +80,8 @@ public sealed class PaymentService(
                 .FirstOrDefaultAsync(a => a.Id == appointmentId && a.PatientUserId == userId, ct) ?? throw ApiException.NotFound();
             var total = TotalOf(appointment);
             // With deposits on, the first (and only) online checkout charges the fixed deposit; the rest is settled at the clinic.
-            var charge = clinic.DepositAmountEgp > 0 ? Math.Min(clinic.DepositAmountEgp, total) : total;
+            var deposit = DepositPolicy.AmountFor(appointment.Slot?.Doctor?.Clinic, clinic);
+            var charge = deposit > 0 ? Math.Min(deposit, total) : total;
             var kind = charge < total ? PaymentKind.Deposit : PaymentKind.Full;
             var payable = appointment.Status == AppointmentStatus.Confirmed
                 && appointment.Slot!.StartsAt > Now
@@ -316,7 +317,11 @@ public sealed class PaymentService(
             var appointment = await AppointmentMapper.WithDetails(scope.Appointments()).FirstOrDefaultAsync(a => a.Id == appointmentId, ct)
                 ?? throw ApiException.NotFound();
             var total = TotalOf(appointment);
-            if (appointment.Status == AppointmentStatus.Cancelled || total <= 0 || appointment.Payments.Any(p => p.Status is PaymentStatus.Paid or PaymentStatus.Refunding))
+            // A deposit already paid online is not a blocker: staff record the rest in cash.
+            var live = appointment.Payments.Where(p => p.Status is PaymentStatus.Paid or PaymentStatus.Refunding).ToList();
+            var depositPaid = live.Where(p => p.Kind == PaymentKind.Deposit).Sum(p => p.AmountEgp);
+            var balance = total - depositPaid;
+            if (appointment.Status == AppointmentStatus.Cancelled || total <= 0 || live.Any(p => p.Kind != PaymentKind.Deposit) || balance <= 0)
             {
                 throw new ApiException(ErrorCodes.PaymentNotAllowed);
             }
@@ -330,7 +335,7 @@ public sealed class PaymentService(
             db.Payments.Add(new Payment
             {
                 AppointmentId = appointment.Id,
-                AmountEgp = total,
+                AmountEgp = balance,
                 Status = PaymentStatus.Paid,
                 Method = PaymentMethod.Cash,
                 Provider = "cash",

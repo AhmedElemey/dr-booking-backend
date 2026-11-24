@@ -181,13 +181,14 @@ public enum PaymentKind
     Deposit,
 }
 
-/// <summary>What the appointment DTOs report: Unpaid when there is no live payment.</summary>
+/// <summary>What the appointment DTOs report: Unpaid when there is no live payment, DepositPaid when only a booking deposit is paid (the rest is settled at the clinic).</summary>
 public enum AppointmentPaymentStatus
 {
     Unpaid,
     Pending,
     Paid,
     Refunded,
+    DepositPaid,
 }
 
 public class Payment
