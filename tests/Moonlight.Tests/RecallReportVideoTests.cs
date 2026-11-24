@@ -183,6 +183,7 @@ public class ReportTests(PostgresFixture db) : Phase2TestBase(db)
         var slot = await LocalSlotAsync(1, hour);
         var response = await patient.PostAsync("/api/v1/appointments", new { slotId = slot.Id, serviceId = Service.Id, couponCode = coupon });
         Assert.Equal(201, response.StatusCode);
+        Assert.Equal(200, (await Staff.PostAsync($"/api/v1/dashboard/appointments/{response.Id}/approve")).StatusCode);
         return response.Id;
     }
 
@@ -332,6 +333,7 @@ public class VideoTests(PostgresFixture db) : Phase2TestBase(db)
         var slot = await SlotAsync(TimeSpan.FromHours(2));
         var booked = await patient.PostAsync("/api/v1/appointments", new { slotId = slot.Id, mode = "Video" });
         var id = booked.Id;
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(id)}/approve")).StatusCode);
 
         var early = await patient.GetAsync($"{Patient(id)}/video");
         Assert.Equal(409, early.StatusCode);
