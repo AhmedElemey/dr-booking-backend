@@ -32,6 +32,8 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "POST /api/v1/dashboard/appointments",
         "POST /api/v1/dashboard/appointments/{id}/reschedule",
         "POST /api/v1/dashboard/appointments/{id}/cancel",
+        "POST /api/v1/dashboard/appointments/{id}/approve",
+        "POST /api/v1/dashboard/appointments/{id}/reject",
         "POST /api/v1/dashboard/appointments/{id}/complete",
         "POST /api/v1/dashboard/appointments/{id}/no-show",
         "GET /api/v1/dashboard/doctors",
