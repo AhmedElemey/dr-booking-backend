@@ -16,6 +16,7 @@ public static class FeatureKeys
     public const string WaitingList = "waitingList";
     public const string FamilyAccounts = "familyAccounts";
     public const string WhatsappReminders = "whatsappReminders";
+    public const string WhatsappOtp = "whatsappOtp";
     public const string OnlinePayments = "onlinePayments";
     public const string Insurance = "insurance";
     public const string HolidayCalendar = "holidayCalendar";
@@ -43,6 +44,7 @@ public static class FeatureKeys
         WaitingList,
         FamilyAccounts,
         WhatsappReminders,
+        WhatsappOtp,
         OnlinePayments,
         Insurance,
         HolidayCalendar,
