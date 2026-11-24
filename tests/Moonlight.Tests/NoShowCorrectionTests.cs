@@ -126,4 +126,53 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
         var row = Assert.Single(list.Body.EnumerateArray(), r => r.GetProperty("id").GetGuid() == patient.User.Id);
         Assert.Equal(1, row.GetProperty("noShowCount").GetInt32());
     }
+
+    [Fact]
+    public async Task A_doctor_can_correct_their_own_visit()
+    {
+        var (id, _, _) = await CompletedVisitAsync();
+
+        var response = await DoctorSession.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow", reason = "patient never arrived" });
+
+        Assert.Equal(200, response.StatusCode);
+        Assert.Equal("NoShow", response["status"].GetString());
+        var correction = Assert.Single(await CorrectionsAsync(id));
+        Assert.Equal(DoctorSession.User!.Id, correction.ChangedByUserId);
+    }
+
+    [Fact]
+    public async Task A_doctor_cannot_correct_another_doctors_visit()
+    {
+        var other = await World.NewDoctorAsync(Clinic, "Other");
+        var (id, _, _) = await CompletedVisitAsync(doctor: other);
+
+        var response = await DoctorSession.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
+
+        Assert.Equal(404, response.StatusCode);
+        Assert.Empty(await CorrectionsAsync(id));
+    }
+
+    [Fact]
+    public async Task Staff_of_another_clinic_cannot_correct()
+    {
+        var clinicB = await World.NewClinicAsync("B");
+        var staffB = await World.LoginAsync(await World.NewStaffAsync(clinicB));
+        var (id, _, _) = await CompletedVisitAsync();
+
+        var response = await staffB.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
+
+        Assert.Equal(404, response.StatusCode);
+        Assert.Empty(await CorrectionsAsync(id));
+    }
+
+    [Fact]
+    public async Task A_patient_cannot_correct_a_status()
+    {
+        var (id, patient, _) = await CompletedVisitAsync();
+
+        var response = await patient.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
+
+        Assert.Equal(403, response.StatusCode);
+        Assert.Empty(await CorrectionsAsync(id));
+    }
 }
