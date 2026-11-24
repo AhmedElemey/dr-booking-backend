@@ -331,7 +331,9 @@ public sealed class AppointmentService(
         }
 
         var startsAt = await db.Slots.Where(s => s.Id == appointment.SlotId).Select(s => s.StartsAt).FirstAsync(ct);
-        if (!AppointmentRules.CanCloseOut(Now, startsAt))
+        // A visit with the doctor already started in the real world, so it can always close out;
+        // the clock rule only guards closing from Confirmed or CheckedIn.
+        if (appointment.Status != AppointmentStatus.InProgress && !AppointmentRules.CanCloseOut(Now, startsAt))
         {
             throw new ApiException(ErrorCodes.InvalidTransition, "The visit has not started yet.");
         }
