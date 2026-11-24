@@ -156,6 +156,7 @@ public static class ServiceRegistration
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ReminderProcessor>();
         services.AddScoped<ReviewPromptProcessor>();
+        services.AddScoped<PendingExpiryProcessor>();
         services.AddScoped<MaintenanceProcessor>();
         if (configuration.GetValue("Reminders:Enabled", true))
         {
