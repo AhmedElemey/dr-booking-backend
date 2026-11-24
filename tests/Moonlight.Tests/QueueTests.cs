@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 using Moonlight.Api.Domain;
 using Moonlight.Api.Features.Flags;
 
@@ -89,5 +91,57 @@ public class QueueTests(PostgresFixture db) : Phase2TestBase(db)
         Assert.Equal(403, (await Staff.GetAsync(QueueUrl)).StatusCode);
         Assert.Equal(403, (await Staff.PostAsync($"{Dash(id)}/check-in")).StatusCode);
         Assert.Equal(403, (await Staff.PostAsync($"{Dash(id)}/start")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_late_patient_stays_in_the_queue_after_the_slot_time_passes()
+    {
+        Enable(FeatureKeys.LiveQueue);
+        var (id, _) = await BookedTodayAsync(TimeSpan.FromHours(2));
+
+        Factory.Clock.Advance(TimeSpan.FromMinutes(150));
+
+        var rows = (await Staff.GetAsync(QueueUrl)).Body.EnumerateArray().ToList();
+        Assert.Equal(id, Assert.Single(rows).GetProperty("appointment").GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task An_in_progress_visit_from_an_earlier_day_does_not_block_the_doctor_today()
+    {
+        Enable(FeatureKeys.LiveQueue);
+        var (stale, _) = await BookedTodayAsync(TimeSpan.FromHours(2));
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(stale)}/check-in")).StatusCode);
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(stale)}/start")).StatusCode);
+
+        // The visit was never closed; two days later the doctor starts a new one.
+        Factory.Clock.Advance(TimeSpan.FromDays(2));
+        var patient = await World.NewPatientAsync();
+        var slot = await SlotAsync(TimeSpan.FromHours(2));
+        var id = await World.BookAsync(patient, slot);
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(id)}/check-in")).StatusCode);
+
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(id)}/start")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_video_visit_with_the_doctor_opens_its_video_link_outside_the_normal_window()
+    {
+        Enable(FeatureKeys.LiveQueue, FeatureKeys.VideoConsultation);
+        await World.WithDbAsync(async d => await d.Doctors.Where(x => x.Id == Doctor.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.OffersVideo, true)));
+        var patient = await World.NewPatientAsync();
+        var slot = await SlotAsync(TimeSpan.FromHours(2));
+        var booked = await patient.PostAsync("/api/v1/appointments", new { slotId = slot.Id, mode = "Video" });
+        Assert.Equal(201, booked.StatusCode);
+        var id = booked.Id;
+
+        Assert.Equal("VIDEO_NOT_OPEN", (await patient.GetAsync($"{Patient(id)}/video")).Code);
+
+        Factory.Clock.Advance(TimeSpan.FromMinutes(100));
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(id)}/check-in")).StatusCode);
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(id)}/start")).StatusCode);
+        Factory.Clock.Advance(TimeSpan.FromHours(6));
+
+        Assert.Equal(200, (await patient.GetAsync($"{Patient(id)}/video")).StatusCode);
+        Assert.Equal(200, (await Staff.GetAsync($"{Dash(id)}/video")).StatusCode);
     }
 }
