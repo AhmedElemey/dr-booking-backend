@@ -5,6 +5,7 @@ using Moonlight.Api.Domain;
 using Moonlight.Api.Features.Family;
 using Moonlight.Api.Features.Flags;
 using Moonlight.Api.Features.Insurance;
+using Moonlight.Api.Features.Payments;
 using Moonlight.Api.Features.Promotions;
 using Moonlight.Api.Features.Reviews;
 
@@ -92,10 +93,12 @@ public sealed class AppointmentMapper(Language lang, FeatureService features, Cl
 
     // The fixed deposit the clinic asks for at booking (0 when deposits are off), capped at the appointment total.
     private decimal DepositRequiredOf(Appointment a, decimal price) =>
-        config.DepositAmountEgp > 0 ? Math.Min(config.DepositAmountEgp, Math.Max(0, price - a.DiscountEgp)) : 0m;
+        DepositPolicy.AmountFor(a.Slot?.Doctor?.Clinic, config) is var amount and > 0
+            ? Math.Min(amount, Math.Max(0, price - a.DiscountEgp))
+            : 0m;
 
     private static decimal DepositPaidOf(Appointment a) =>
-        a.Payments.Where(p => p.Kind == PaymentKind.Deposit && p.Status is PaymentStatus.Paid or PaymentStatus.Refunding).Sum(p => p.AmountEgp);
+        a.Payments.Where(p => p.Kind == PaymentKind.Deposit && (p.Status is PaymentStatus.Paid or PaymentStatus.Refunding)).Sum(p => p.AmountEgp);
 
     // The price snapshot taken at booking; appointments that predate it fall back to the current service price / doctor fee.
     private static decimal PriceOf(Appointment a) => a.PriceEgp ?? CouponService.PriceOf(a.Slot!.Doctor!, a.Service) ?? 0m;
