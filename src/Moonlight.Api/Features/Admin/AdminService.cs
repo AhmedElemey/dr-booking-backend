@@ -22,9 +22,11 @@ public sealed record CreateClinicDto(
 
 public sealed record SetActiveDto(bool? IsActive);
 
-public sealed record CreateUserDto(string? Phone, string? FullName, UserRole? Role, string? NameAr, string? NameEn, Guid? SpecialtyId);
+public sealed record SetAdminDto(bool? IsAdmin);
 
-public sealed record AdminUserDto(Guid Id, string Phone, string? FullName, UserRole Role, bool IsActive, Guid? ClinicId, Guid? DoctorId);
+public sealed record CreateUserDto(string? Phone, string? FullName, UserRole? Role, string? NameAr, string? NameEn, Guid? SpecialtyId, bool? IsAdmin);
+
+public sealed record AdminUserDto(Guid Id, string Phone, string? FullName, UserRole Role, bool IsActive, Guid? ClinicId, Guid? DoctorId, bool? IsAdmin);
 
 public sealed record AdminFeatureValueDto(bool Effective, bool HasOverride);
 
@@ -177,6 +179,7 @@ public sealed class AdminService(MoonlightDbContext db, CurrentUser current, Tim
         var clinic = await db.Clinics.FirstOrDefaultAsync(c => c.Id == clinicId, ct) ?? throw ApiException.NotFound();
         var errors = new ValidationErrors()
             .Require(request.Role is UserRole.Doctor or UserRole.ClinicStaff, "role", "role must be 'Doctor' or 'ClinicStaff'.")
+            .Require(request.IsAdmin != true || request.Role == UserRole.ClinicStaff, "isAdmin", "Only clinic staff can be clinic admins.")
             .RequireText(request.FullName, "fullName", 200);
         var phone = PhoneNumber.TryNormalize(request.Phone, out var normalized) ? normalized : null;
         errors.Require(phone is not null, "phone", "Enter a valid Egyptian mobile number, for example 01012345678.");
@@ -220,7 +223,7 @@ public sealed class AdminService(MoonlightDbContext db, CurrentUser current, Tim
         }
         else
         {
-            db.ClinicStaff.Add(new ClinicStaff { UserId = user.Id, ClinicId = clinic.Id });
+            db.ClinicStaff.Add(new ClinicStaff { UserId = user.Id, ClinicId = clinic.Id, IsAdmin = request.IsAdmin == true });
         }
 
         try
@@ -232,7 +235,7 @@ public sealed class AdminService(MoonlightDbContext db, CurrentUser current, Tim
             throw new ApiException(ErrorCodes.PhoneInUse);
         }
 
-        return new AdminUserDto(user.Id, user.Phone, user.FullName, user.Role, user.IsActive, clinic.Id, doctor?.Id);
+        return new AdminUserDto(user.Id, user.Phone, user.FullName, user.Role, user.IsActive, clinic.Id, doctor?.Id, doctor is null ? request.IsAdmin == true : null);
     }
 
     public async Task<AdminUserDto> SetUserActiveAsync(Guid id, bool? isActive, CancellationToken ct)
@@ -253,8 +256,24 @@ public sealed class AdminService(MoonlightDbContext db, CurrentUser current, Tim
         }
 
         await db.SaveChangesAsync(ct);
-        var (clinicId, doctorId) = await db.LoadAsync(user, ct);
-        return new AdminUserDto(user.Id, user.Phone, user.FullName, user.Role, user.IsActive, clinicId, doctorId);
+        var (clinicId, doctorId, isClinicAdmin) = await db.LoadScopeAsync(user, ct);
+        return new AdminUserDto(user.Id, user.Phone, user.FullName, user.Role, user.IsActive, clinicId, doctorId, user.Role == UserRole.ClinicStaff ? isClinicAdmin : null);
+    }
+
+    /// <summary>Promote or demote a clinic staff member as clinic admin. Only staff rows carry the flag; doctors and patients are rejected.</summary>
+    public async Task<AdminUserDto> SetStaffAdminAsync(Guid id, bool? isAdmin, CancellationToken ct)
+    {
+        new ValidationErrors().Require(isAdmin is not null, "isAdmin", "isAdmin is required.").ThrowIfAny();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw ApiException.NotFound();
+        var staff = await db.ClinicStaff.FirstOrDefaultAsync(s => s.UserId == id, ct);
+        if (user.Role != UserRole.ClinicStaff || staff is null)
+        {
+            throw ApiException.Validation("isAdmin", "Only clinic staff can be clinic admins.");
+        }
+
+        staff.IsAdmin = isAdmin!.Value;
+        await db.SaveChangesAsync(ct);
+        return new AdminUserDto(user.Id, user.Phone, user.FullName, user.Role, user.IsActive, staff.ClinicId, null, staff.IsAdmin);
     }
 
     private async Task<string> UniqueSlugAsync(string nameEn, CancellationToken ct)
