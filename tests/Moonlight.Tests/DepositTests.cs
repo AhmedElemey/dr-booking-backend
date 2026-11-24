@@ -132,4 +132,73 @@ public class DepositTests(PostgresFixture db) : Phase2TestBase(db, new Dictionar
         Assert.Equal(PaymentStatus.Refunded, payment.Status);
         Assert.NotNull(payment.RefundedAt);
     }
+
+    [Fact]
+    public async Task Staff_mark_paid_records_the_clinic_balance_after_a_deposit()
+    {
+        Enable(FeatureKeys.OnlinePayments);
+        var service = await World.WithDbAsync(async d =>
+        {
+            var s = new Service { DoctorId = Doctor.Id, NameAr = "كشف", NameEn = "Visit", DurationMinutes = 30, PriceEgp = 270, IsActive = true };
+            d.Services.Add(s);
+            await d.SaveChangesAsync();
+            return s;
+        });
+        var (id, patient) = await BookedAsync(service.Id);
+        var pay = await patient.PostAsync($"{Patient(id)}/pay", new { returnUrl = ReturnUrl });
+        Assert.Equal(200, (await WebhookAsync(pay["paymentId"].GetGuid(), true)).StatusCode);
+        Assert.Equal("DepositPaid", (await Staff.GetAsync(Dash(id)))["paymentStatus"].GetString());
+
+        var marked = await Staff.PostAsync($"{Dash(id)}/mark-paid");
+        Assert.Equal(200, marked.StatusCode);
+        Assert.Equal("Paid", marked["paymentStatus"].GetString());
+        var cash = await World.WithDbAsync(d => d.Payments.AsNoTracking().Where(p => p.AppointmentId == id && p.Method == PaymentMethod.Cash).ToListAsync());
+        var only = Assert.Single(cash);
+        Assert.Equal(170m, only.AmountEgp);
+
+        // Nothing is left to collect.
+        Assert.Equal(409, (await Staff.PostAsync($"{Dash(id)}/mark-paid")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Clinic_deposit_overrides_the_config_default()
+    {
+        Enable(FeatureKeys.OnlinePayments);
+        await World.WithDbAsync(async d =>
+        {
+            (await d.Clinics.FirstAsync(c => c.Id == Clinic.Id)).DepositAmountEgp = 150;
+            await d.SaveChangesAsync();
+            return 0;
+        });
+        var (id, patient) = await BookedAsync();
+        Assert.Equal(150m, (await patient.GetAsync(Patient(id)))["depositRequiredEgp"].GetDecimal());
+        var pay = await patient.PostAsync($"{Patient(id)}/pay", new { returnUrl = ReturnUrl });
+        Assert.Equal(150m, (await PaymentAsync(pay["paymentId"].GetGuid())).AmountEgp);
+    }
+
+    [Fact]
+    public async Task Clinic_without_its_own_deposit_uses_the_config_default()
+    {
+        Enable(FeatureKeys.OnlinePayments);
+        var (id, patient) = await BookedAsync();
+        Assert.Equal(100m, (await patient.GetAsync(Patient(id)))["depositRequiredEgp"].GetDecimal());
+    }
+
+    [Fact]
+    public async Task Clinic_deposit_of_zero_means_no_deposit()
+    {
+        Enable(FeatureKeys.OnlinePayments);
+        await World.WithDbAsync(async d =>
+        {
+            (await d.Clinics.FirstAsync(c => c.Id == Clinic.Id)).DepositAmountEgp = 0;
+            await d.SaveChangesAsync();
+            return 0;
+        });
+        var (id, patient) = await BookedAsync();
+        Assert.Equal(0m, (await patient.GetAsync(Patient(id)))["depositRequiredEgp"].GetDecimal());
+        var pay = await patient.PostAsync($"{Patient(id)}/pay", new { returnUrl = ReturnUrl });
+        var payment = await PaymentAsync(pay["paymentId"].GetGuid());
+        Assert.Equal(300m, payment.AmountEgp);
+        Assert.Equal(PaymentKind.Full, payment.Kind);
+    }
 }
