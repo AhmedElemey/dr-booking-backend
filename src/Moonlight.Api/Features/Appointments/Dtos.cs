@@ -55,6 +55,8 @@ public sealed record AppointmentDto(
     decimal DiscountEgp,
     decimal TotalEgp,
     AppointmentPaymentStatus PaymentStatus,
+    decimal DepositRequiredEgp,
+    decimal DepositPaidEgp,
     FamilyMemberRefDto? FamilyMember,
     InsuranceRefDto? Insurance,
     bool CanReview,
@@ -80,6 +82,8 @@ public sealed record DashboardAppointmentDto(
     decimal DiscountEgp,
     decimal TotalEgp,
     AppointmentPaymentStatus PaymentStatus,
+    decimal DepositRequiredEgp,
+    decimal DepositPaidEgp,
     FamilyMemberRefDto? FamilyMember,
     InsuranceRefDto? Insurance,
     ReviewRefDto? Review);
