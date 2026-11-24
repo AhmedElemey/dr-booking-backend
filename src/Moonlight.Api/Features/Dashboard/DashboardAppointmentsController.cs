@@ -75,4 +75,13 @@ public class DashboardAppointmentsController(AppointmentService appointments) : 
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
     public Task<DashboardAppointmentDto> NoShow(Guid id, CancellationToken ct) => appointments.NoShowAsync(id, ct);
+
+    /// <summary>Correct a mistaken Completed/NoShow within 24 hours of closing the visit. Audit-logged; a corrected no-show refunds the paid online payment.</summary>
+    [HttpPost("{id:guid}/correct-status")]
+    [ProducesResponseType(typeof(DashboardAppointmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
+    public Task<DashboardAppointmentDto> CorrectStatus(Guid id, CorrectStatusDto request, CancellationToken ct) =>
+        appointments.CorrectStatusAsync(id, request, ct);
 }
