@@ -1,4 +1,4 @@
-# Moonlight — MVP Technical Spec
+# Dr booking — MVP Technical Spec
 
 Dentist reservation platform. Patients find a dentist and book a slot (mobile app or website); doctors and clinic staff manage appointments in a dashboard. Payment is at the clinic.
 
@@ -10,10 +10,10 @@ Dentist reservation platform. Patients find a dentist and book a slot (mobile ap
 
 | Repo | Stack | Audience |
 |---|---|---|
-| `moonlight-backend` | .NET 8 Web API, EF Core, **PostgreSQL** | all clients |
-| `moonlight-mobile` | Flutter (Riverpod, go_router, Dio, fpdart; clean architecture) | patients |
-| `moonlight-dashboard` | Angular | doctors, clinic staff, (minimal) platform admin |
-| `moonlight-website` | Next.js | public landing, doctor profiles, web booking |
+| `dr-booking-backend` | .NET 8 Web API, EF Core, **PostgreSQL** | all clients |
+| `dr-booking-mobile` | Flutter (Riverpod, go_router, Dio, fpdart; clean architecture) | patients |
+| `dr-booking-dashboard` | Angular | doctors, clinic staff, (minimal) platform admin |
+| `dr-booking-website` | Next.js | public landing, doctor profiles, web booking |
 
 **Database: PostgreSQL** — range types plus an exclusion constraint make double-booking impossible at the database level, and it is free and cheap to host anywhere.
 
@@ -62,7 +62,7 @@ One role per user in v1 (a doctor cannot also be a patient with the same phone).
 | `Patient` | Anyone with an Egyptian mobile number | Self (first OTP login), or implicitly when staff books on their behalf |
 | `Doctor` | Dentist with a profile | `PlatformAdmin` |
 | `ClinicStaff` | Receptionist/manager of one clinic | `PlatformAdmin` |
-| `PlatformAdmin` | Moonlight team | Seeded / DB |
+| `PlatformAdmin` | Dr booking team | Seeded / DB |
 
 **Scope rules**
 
@@ -299,7 +299,7 @@ RFC 7807 `application/problem+json` with a stable machine `code`:
 
 ```json
 {
-  "type": "https://moonlight.example/errors/slot-taken",
+  "type": "https://drbooking.example/errors/slot-taken",
   "title": "Slot no longer available",
   "status": 409,
   "code": "SLOT_TAKEN",
@@ -337,7 +337,7 @@ Un-paged lists (`/specialties`, `/cities`, services, slot lists) return a plain 
 
 Every screen below lists the endpoints it uses; all exist in Section 4.
 
-### Mobile (`moonlight-mobile`, patient)
+### Mobile (`dr-booking-mobile`, patient)
 
 | Screen | Purpose | Endpoints |
 |---|---|---|
@@ -358,7 +358,7 @@ Every screen below lists the endpoints it uses; all exist in Section 4.
 
 Guests can use everything up to "Confirm booking". Doctor/staff accounts that log into the patient app get `403` on patient endpoints and see a "use the dashboard" message.
 
-### Dashboard (`moonlight-dashboard`, doctors / staff / admin)
+### Dashboard (`dr-booking-dashboard`, doctors / staff / admin)
 
 | Screen | Purpose | Endpoints |
 |---|---|---|
@@ -376,7 +376,7 @@ Guests can use everything up to "Confirm booking". Doctor/staff accounts that lo
 | Admin: add user | Create doctor/staff account for a clinic; deactivate user | `POST /admin/clinics/{id}/users`, `PATCH /admin/users/{id}/active` |
 | Account | Language, logout | `PUT /me`, `POST /auth/logout` |
 
-### Website (`moonlight-website`, public + web booking)
+### Website (`dr-booking-website`, public + web booking)
 
 Routes are prefixed `/ar` and `/en` (hreflang alternates, `dir="rtl"` for Arabic). Public pages are server-rendered for SEO.
 
@@ -417,7 +417,7 @@ Patient-initiated cancellation sends nothing to the patient (the UI already conf
 
 Common to all repos: `main` is protected, work happens on short-lived branches via PR, squash-merge, CI must pass. `main` auto-deploys to **dev**; a version tag (`vX.Y.Z`) deploys to **prod**. No secrets in git: GitHub Actions environment secrets / the host's secret store.
 
-### `moonlight-backend`
+### `dr-booking-backend`
 
 ```
 moonlight-backend/
@@ -440,7 +440,7 @@ moonlight-backend/
 - **Environments**: `appsettings.json` (defaults), `appsettings.Development.json`, `Production` via environment variables (`ConnectionStrings__Default`, `Jwt__Key`, `Fcm__ServiceAccountJson`, `Sms__*`, `Storage__*`, `Booking__PatientCancelWindowHours`, `Booking__MinLeadMinutes`). Dev: stubbed SMS + fixed OTP, local disk for photos. Prod: real SMS, object storage (S3-compatible) for photos. Migrations run on startup in dev; in prod via an explicit CI/CD step.
 - **CI** (GitHub Actions, on PR and `main`): `dotnet restore` → `dotnet format --verify-no-changes` → `dotnet build -warnaserror` → `dotnet test` (integration tests use a Postgres service container) → on `main`/tags `docker build` (and push image).
 
-### `moonlight-mobile`
+### `dr-booking-mobile`
 
 Follows the house style: Flutter + Riverpod + go_router + Dio + fpdart, `lib/features/<feature>/{data,domain,presentation}`.
 
@@ -465,7 +465,7 @@ moonlight-mobile/
 - Repo conventions from the house CLAUDE.md apply: dispose controllers, `autoDispose` for screen-scoped providers, `mounted` checks after awaits, `.builder` lists, cached network images.
 - **CI**: `flutter pub get` → `dart format --set-exit-if-changed .` → `flutter analyze` → `flutter test` → `flutter build apk --debug -t lib/main_dev.dart` (PR); signed release builds (AAB, and iOS on a macOS runner) on version tags.
 
-### `moonlight-dashboard`
+### `dr-booking-dashboard`
 
 ```
 moonlight-dashboard/
@@ -483,7 +483,7 @@ moonlight-dashboard/
 - **Environments**: `environment.ts` (dev API URL) and `environment.prod.ts` via Angular build configurations. Route guards check role from `/me`; admin routes only for `PlatformAdmin`.
 - **CI**: `npm ci` → `ng lint` → `ng test --watch=false --browsers=ChromeHeadless` → `ng build --configuration production`.
 
-### `moonlight-website`
+### `dr-booking-website`
 
 ```
 moonlight-website/
