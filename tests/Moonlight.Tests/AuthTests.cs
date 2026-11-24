@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 using Moonlight.Api.Domain;
 
@@ -21,6 +22,54 @@ public class AuthTests(PostgresFixture db) : IClassFixture<PostgresFixture>, IAs
     {
         var message = sms.Sent.Last(s => s.Phone == phone).Message;
         return System.Text.RegularExpressions.Regex.Match(message, @"\d{6}").Value;
+    }
+
+    private void SetWhatsappReminders(bool on)
+    {
+        var service = _factory.Services.GetRequiredService<Api.Features.Flags.FeatureService>();
+        var features = service.Current.Features.ToDictionary(f => f.Key, f => f.Value);
+        features[Api.Features.Flags.FeatureKeys.WhatsappReminders] = on;
+        service.Apply(features, Api.Features.Flags.FeatureSources.Console, DateTime.UtcNow);
+    }
+
+    [Fact]
+    public async Task Login_code_goes_by_sms_while_whatsappReminders_is_off()
+    {
+        SetWhatsappReminders(false);
+        var phone = TestWorld.NewPhone();
+
+        Assert.Equal(204, (await _world.Anonymous().PostAsync("/api/v1/auth/otp/request", new { phone })).StatusCode);
+
+        Assert.Equal(phone, Assert.Single(_factory.Sms.Sent).Phone);
+        Assert.Empty(_factory.WhatsApp.Sent);
+    }
+
+    [Fact]
+    public async Task Login_code_goes_by_whatsapp_when_whatsappReminders_is_on_and_verifies()
+    {
+        SetWhatsappReminders(true);
+        var phone = TestWorld.NewPhone();
+
+        Assert.Equal(204, (await _world.Anonymous().PostAsync("/api/v1/auth/otp/request", new { phone })).StatusCode);
+
+        Assert.Empty(_factory.Sms.Sent);
+        var sent = Assert.Single(_factory.WhatsApp.Sent);
+        Assert.Equal(phone, sent.Phone);
+        Assert.Equal("otp_code", sent.Template);
+        var code = Assert.Single(sent.Parameters);
+        Assert.Equal(200, (await _world.Anonymous().PostAsync("/api/v1/auth/otp/verify", new { phone, code })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_code_falls_back_to_sms_when_whatsapp_fails()
+    {
+        SetWhatsappReminders(true);
+        _factory.WhatsApp.Fail = true;
+        var phone = TestWorld.NewPhone();
+
+        Assert.Equal(204, (await _world.Anonymous().PostAsync("/api/v1/auth/otp/request", new { phone })).StatusCode);
+
+        Assert.Equal(phone, Assert.Single(_factory.Sms.Sent).Phone);
     }
 
     [Fact]
