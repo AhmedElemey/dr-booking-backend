@@ -105,8 +105,8 @@ public sealed class CatalogService(
                 clinic.Longitude,
                 clinic.Timezone),
             doctor.YearsExperience,
-            doctor.ConsultationFeeEgp,
-            services.Select(s => new PublicServiceDto(s.Id, lang.Pick(s.NameAr, s.NameEn), s.DurationMinutes, s.PriceEgp)).ToList(),
+            clinic.ShowPrices ? doctor.ConsultationFeeEgp : null,
+            services.Select(s => new PublicServiceDto(s.Id, lang.Pick(s.NameAr, s.NameEn), s.DurationMinutes, clinic.ShowPrices ? s.PriceEgp : null)).ToList(),
             OffersVideoPublic(doctor),
             accepted.GetValueOrDefault(doctor.Id) ?? [],
             ratings.GetValueOrDefault(doctor.Id));
@@ -169,7 +169,7 @@ public sealed class CatalogService(
         new SpecialtyDto(d.Specialty!.Id, lang.Pick(d.Specialty.NameAr, d.Specialty.NameEn)),
         new ClinicSummaryDto(d.Clinic!.Id, lang.Pick(d.Clinic.NameAr, d.Clinic.NameEn), d.Clinic.City),
         d.YearsExperience,
-        d.ConsultationFeeEgp,
+        d.Clinic!.ShowPrices ? d.ConsultationFeeEgp : null,
         OffersVideoPublic(d),
         accepted,
         rating);
