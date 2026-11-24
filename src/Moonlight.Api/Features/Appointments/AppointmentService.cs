@@ -49,10 +49,20 @@ public sealed class AppointmentService(
         var service = await ValidateServiceAsync(request.ServiceId, slot.DoctorId, ct);
         var extras = await BuildExtrasAsync(slot, service, current.Id, request, ct);
 
+        // Pending only exists while the clinic has the manualReview switch on; otherwise a booking is Confirmed at once.
+        var requiresApproval = features.IsEnabled(FeatureKeys.ManualReview);
         var appointment = await CreateAsync(
-            slot, current.Id, request.ServiceId, request.PatientNote, createdBy: current.Id, enforceLimits: true, extras, ct, requiresApproval: true);
+            slot, current.Id, request.ServiceId, request.PatientNote, createdBy: current.Id, enforceLimits: true, extras, ct, requiresApproval);
         await waitingList.MarkBookedAsync(current.Id, extras.FamilyMemberId, slot.DoctorId, slot.StartsAt, ct);
-        await notifications.AppointmentReceivedAsync(appointment.Id, ct);
+        if (requiresApproval)
+        {
+            await notifications.AppointmentReceivedAsync(appointment.Id, ct);
+        }
+        else
+        {
+            await notifications.AppointmentConfirmedAsync(appointment.Id, ct);
+        }
+
         return await GetPatientAsync(appointment.Id, ct);
     }
 
