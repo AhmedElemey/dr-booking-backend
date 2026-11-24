@@ -55,6 +55,8 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "POST /api/v1/admin/clinics",
         "PATCH /api/v1/admin/clinics/{id}/active",
         "POST /api/v1/admin/clinics/{id}/users",
+        "GET /api/v1/admin/clinics/{id}/features",
+        "PUT /api/v1/admin/clinics/{id}/features",
         "PATCH /api/v1/admin/users/{id}/active",
         "GET /health",
         "GET /api/v1/features",
