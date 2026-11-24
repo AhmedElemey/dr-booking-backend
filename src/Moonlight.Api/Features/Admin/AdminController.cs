@@ -24,6 +24,21 @@ public class AdminController(AdminService admin) : ControllerBase
     public Task<PagedResult<ClinicDto>> ListClinics(int? page, int? pageSize, CancellationToken ct) =>
         admin.ListClinicsAsync(PageRequest.Create(page, pageSize), ct);
 
+    /// <summary>Effective feature flags of one clinic: deployment defaults plus the super admin's overrides, and its deposit amount.</summary>
+    [HttpGet("clinics/{id:guid}/features")]
+    [ProducesResponseType(typeof(AdminClinicFeaturesDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    public Task<AdminClinicFeaturesDto> GetFeatures(Guid id, CancellationToken ct) =>
+        admin.GetFeaturesAsync(id, ct);
+
+    /// <summary>Set or clear per-clinic feature overrides (a null flag value clears the override) and the clinic's fixed deposit amount.</summary>
+    [HttpPut("clinics/{id:guid}/features")]
+    [ProducesResponseType(typeof(AdminClinicFeaturesDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    public Task<AdminClinicFeaturesDto> UpdateFeatures(Guid id, UpdateClinicFeaturesDto request, CancellationToken ct) =>
+        admin.UpdateFeaturesAsync(id, request, ct);
+
     /// <summary>Create a clinic. The timezone defaults to Africa/Cairo.</summary>
     [HttpPost("clinics")]
     [ProducesResponseType(typeof(ClinicDto), StatusCodes.Status201Created)]

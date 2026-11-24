@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Moonlight.Api.Common;
 using Moonlight.Api.Domain;
 using Moonlight.Api.Features.Appointments;
+using Moonlight.Api.Features.Flags;
 
 namespace Moonlight.Api.Features.Dashboard;
 
@@ -61,6 +62,47 @@ public class DashboardAppointmentsController(AppointmentService appointments) : 
     [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
     public Task<DashboardAppointmentDto> Cancel(Guid id, CancelAppointmentDto? request, CancellationToken ct) =>
         appointments.DashboardCancelAsync(id, request?.Reason, ct);
+
+    /// <summary>Today's live queue in scope, ordered: with the doctor, checked-in by arrival, then upcoming. Requires the liveQueue feature.</summary>
+    [HttpGet("queue")]
+    [RequireFeature(FeatureKeys.LiveQueue)]
+    [ProducesResponseType(typeof(IReadOnlyList<DashboardQueueEntryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    public Task<IReadOnlyList<DashboardQueueEntryDto>> Queue(Guid? doctorId, CancellationToken ct) => appointments.QueueAsync(doctorId, ct);
+
+    /// <summary>Check a patient in on the day of their visit (Confirmed to CheckedIn). Requires the liveQueue feature.</summary>
+    [HttpPost("{id:guid}/check-in")]
+    [RequireFeature(FeatureKeys.LiveQueue)]
+    [ProducesResponseType(typeof(DashboardAppointmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
+    public Task<DashboardAppointmentDto> CheckIn(Guid id, CancellationToken ct) => appointments.CheckInAsync(id, ct);
+
+    /// <summary>Start a checked-in visit (CheckedIn to InProgress). One patient per doctor at a time. Requires the liveQueue feature.</summary>
+    [HttpPost("{id:guid}/start")]
+    [RequireFeature(FeatureKeys.LiveQueue)]
+    [ProducesResponseType(typeof(DashboardAppointmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
+    public Task<DashboardAppointmentDto> Start(Guid id, CancellationToken ct) => appointments.StartAsync(id, ct);
+    /// <summary>Approve a Pending booking. The patient is notified that the visit is confirmed.</summary>
+    [HttpPost("{id:guid}/approve")]
+    [ProducesResponseType(typeof(DashboardAppointmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
+    public Task<DashboardAppointmentDto> Approve(Guid id, CancellationToken ct) =>
+        appointments.DashboardApproveAsync(id, ct);
+
+    /// <summary>Reject a Pending booking (cancelledBy = Clinic). The slot is freed and the patient is notified.</summary>
+    [HttpPost("{id:guid}/reject")]
+    [ProducesResponseType(typeof(DashboardAppointmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
+    public Task<DashboardAppointmentDto> Reject(Guid id, CancelAppointmentDto? request, CancellationToken ct) =>
+        appointments.DashboardRejectAsync(id, request?.Reason, ct);
 
     /// <summary>Mark a started appointment Completed.</summary>
     [HttpPost("{id:guid}/complete")]

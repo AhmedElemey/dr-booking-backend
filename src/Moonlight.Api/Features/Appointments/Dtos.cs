@@ -60,7 +60,8 @@ public sealed record AppointmentDto(
     FamilyMemberRefDto? FamilyMember,
     InsuranceRefDto? Insurance,
     bool CanReview,
-    ReviewRefDto? Review);
+    ReviewRefDto? Review,
+    int? QueuePosition = null);
 
 /// <summary>Dashboard appointment: the clinic block is replaced by the patient.</summary>
 public sealed record DashboardAppointmentDto(
@@ -86,7 +87,9 @@ public sealed record DashboardAppointmentDto(
     decimal DepositPaidEgp,
     FamilyMemberRefDto? FamilyMember,
     InsuranceRefDto? Insurance,
-    ReviewRefDto? Review);
+    ReviewRefDto? Review,
+    DateTime? CheckedInAt = null,
+    DateTime? StartedAt = null);
 
 public sealed record DashboardBookAppointmentDto(
     Guid? SlotId,
@@ -96,3 +99,6 @@ public sealed record DashboardBookAppointmentDto(
     string? PatientNote,
     AppointmentMode? Mode = null,
     InsuranceBookingDto? Insurance = null);
+
+/// <summary>One row of the clinic's live queue for today.</summary>
+public sealed record DashboardQueueEntryDto(DashboardAppointmentDto Appointment, int Position);

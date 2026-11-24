@@ -48,6 +48,9 @@
     "reviews": true,
     "promotions": true,
     "recallCampaigns": false,
-    "reports": true
+    "reports": true,
+    "liveQueue": true,
+    "manualReview": false,
+    "publicPrices": true
   }
 }

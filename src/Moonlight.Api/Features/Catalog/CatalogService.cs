@@ -105,8 +105,8 @@ public sealed class CatalogService(
                 clinic.Longitude,
                 clinic.Timezone),
             doctor.YearsExperience,
-            clinic.ShowPrices ? doctor.ConsultationFeeEgp : null,
-            services.Select(s => new PublicServiceDto(s.Id, lang.Pick(s.NameAr, s.NameEn), s.DurationMinutes, clinic.ShowPrices ? s.PriceEgp : null)).ToList(),
+            PricesVisible(clinic) ? doctor.ConsultationFeeEgp : null,
+            services.Select(s => new PublicServiceDto(s.Id, lang.Pick(s.NameAr, s.NameEn), s.DurationMinutes, PricesVisible(clinic) ? s.PriceEgp : null)).ToList(),
             OffersVideoPublic(doctor),
             accepted.GetValueOrDefault(doctor.Id) ?? [],
             ratings.GetValueOrDefault(doctor.Id));
@@ -159,7 +159,10 @@ public sealed class CatalogService(
         return doctor ?? throw ApiException.NotFound();
     }
 
-    private bool OffersVideoPublic(Doctor d) => d.OffersVideo && features.IsEnabled(FeatureKeys.VideoConsultation);
+    private bool OffersVideoPublic(Doctor d) => d.OffersVideo && features.IsEnabled(FeatureKeys.VideoConsultation, d.ClinicId);
+
+    // Prices show only when the clinic keeps its own switch on and the platform admin's publicPrices feature is on for it.
+    private bool PricesVisible(Clinic clinic) => clinic.ShowPrices && features.IsEnabled(FeatureKeys.PublicPrices, clinic.Id);
 
     private DoctorSummaryDto ToSummary(Doctor d, IReadOnlyList<InsuranceProviderRefDto> accepted, RatingDto? rating) => new(
         d.Id,
@@ -169,7 +172,7 @@ public sealed class CatalogService(
         new SpecialtyDto(d.Specialty!.Id, lang.Pick(d.Specialty.NameAr, d.Specialty.NameEn)),
         new ClinicSummaryDto(d.Clinic!.Id, lang.Pick(d.Clinic.NameAr, d.Clinic.NameEn), d.Clinic.City),
         d.YearsExperience,
-        d.Clinic!.ShowPrices ? d.ConsultationFeeEgp : null,
+        PricesVisible(d.Clinic!) ? d.ConsultationFeeEgp : null,
         OffersVideoPublic(d),
         accepted,
         rating);

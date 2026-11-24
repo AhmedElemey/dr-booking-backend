@@ -28,8 +28,98 @@ public sealed record CreateUserDto(string? Phone, string? FullName, UserRole? Ro
 
 public sealed record AdminUserDto(Guid Id, string Phone, string? FullName, UserRole Role, bool IsActive, Guid? ClinicId, Guid? DoctorId, bool? IsAdmin);
 
-public sealed class AdminService(MoonlightDbContext db, CurrentUser current, TimeProvider clock, FeatureService features)
+public sealed record AdminFeatureValueDto(bool Effective, bool HasOverride);
+
+public sealed record AdminClinicFeaturesDto(
+    Guid ClinicId,
+    decimal? DepositAmountEgp,
+    IReadOnlyDictionary<string, AdminFeatureValueDto> Features);
+
+public sealed record UpdateClinicFeaturesDto(
+    Dictionary<string, bool?>? Features,
+    decimal? DepositAmountEgp,
+    bool? ClearDepositAmountEgp);
+
+public sealed class AdminService(MoonlightDbContext db, CurrentUser current, TimeProvider clock, FeatureService features, ClinicFeatureOverrides overrides)
 {
+    public async Task<AdminClinicFeaturesDto> GetFeaturesAsync(Guid clinicId, CancellationToken ct)
+    {
+        var clinic = await db.Clinics.AsNoTracking().FirstOrDefaultAsync(c => c.Id == clinicId, ct)
+            ?? throw ApiException.NotFound();
+        return FeaturesDto(clinic);
+    }
+
+    public async Task<AdminClinicFeaturesDto> UpdateFeaturesAsync(Guid clinicId, UpdateClinicFeaturesDto request, CancellationToken ct)
+    {
+        var unknown = request.Features is null ? [] : request.Features.Keys.Where(k => !FeatureKeys.All.Contains(k)).ToList();
+        new ValidationErrors()
+            .Require(unknown.Count == 0, "features", "unknown feature key: " + string.Join(", ", unknown))
+            .Require(request.DepositAmountEgp is null or >= 0, "depositAmountEgp", "depositAmountEgp must be zero or more.")
+            .ThrowIfAny();
+
+        var clinic = await db.Clinics.FirstOrDefaultAsync(c => c.Id == clinicId, ct) ?? throw ApiException.NotFound();
+
+        if (request.Features is { } changes)
+        {
+            var rows = await db.ClinicFeatureOverrides.Where(o => o.ClinicId == clinicId).ToListAsync(ct);
+            foreach (var (key, value) in changes)
+            {
+                var row = rows.FirstOrDefault(o => o.Key == key);
+                if (value is null)
+                {
+                    if (row is not null)
+                    {
+                        db.ClinicFeatureOverrides.Remove(row);
+                    }
+                }
+                else if (row is null)
+                {
+                    db.ClinicFeatureOverrides.Add(new ClinicFeatureOverride
+                    {
+                        ClinicId = clinicId,
+                        Key = key,
+                        Enabled = value.Value,
+                        UpdatedAt = clock.GetUtcNow().UtcDateTime,
+                    });
+                }
+                else
+                {
+                    row.Enabled = value.Value;
+                    row.UpdatedAt = clock.GetUtcNow().UtcDateTime;
+                }
+            }
+        }
+
+        if (request.ClearDepositAmountEgp == true)
+        {
+            clinic.DepositAmountEgp = null;
+        }
+        else if (request.DepositAmountEgp is not null)
+        {
+            clinic.DepositAmountEgp = request.DepositAmountEgp;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        var remaining = await db.ClinicFeatureOverrides.AsNoTracking()
+            .Where(o => o.ClinicId == clinicId)
+            .ToDictionaryAsync(o => o.Key, o => o.Enabled, ct);
+        overrides.SetLocal(clinicId, remaining);
+        return FeaturesDto(clinic);
+    }
+
+    private AdminClinicFeaturesDto FeaturesDto(Domain.Clinic clinic)
+    {
+        var values = FeatureKeys.All.ToDictionary(
+            key => key,
+            key =>
+            {
+                var over = overrides.Get(clinic.Id, key);
+                return new AdminFeatureValueDto(over ?? features.IsEnabled(key), over is not null);
+            });
+        return new AdminClinicFeaturesDto(clinic.Id, clinic.DepositAmountEgp, values);
+    }
+
     public async Task<PagedResult<ClinicDto>> ListClinicsAsync(PageRequest page, CancellationToken ct) =>
         await db.Clinics.AsNoTracking().OrderBy(c => c.NameEn).ThenBy(c => c.Id).ToPagedAsync(
             page, rows => Task.FromResult<IReadOnlyList<ClinicDto>>(rows.Select(ClinicManagementService.ToDto).ToList()), ct);

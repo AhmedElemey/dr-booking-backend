@@ -21,6 +21,9 @@ public sealed class NotificationService(
     public Task AppointmentConfirmedAsync(Guid appointmentId, CancellationToken ct = default) =>
         SendAsync(appointmentId, NotificationKind.Confirmed, ct);
 
+    public Task AppointmentReceivedAsync(Guid appointmentId, CancellationToken ct = default) =>
+        SendAsync(appointmentId, NotificationKind.Received, ct);
+
     public Task AppointmentCancelledByClinicAsync(Guid appointmentId, CancellationToken ct = default) =>
         SendAsync(appointmentId, NotificationKind.CancelledByClinic, ct);
 
@@ -109,6 +112,12 @@ public sealed class NotificationService(
 
         var (type, title, body) = kind switch
         {
+            NotificationKind.Received => (
+                "appointment.received",
+                english ? "Booking received" : "استلمنا حجزك",
+                (english
+                    ? $"{doctorName} at {clinicName}, {when}. Waiting for the clinic to confirm."
+                    : $"{doctorName} - {clinicName}، {when}. في انتظار تأكيد العيادة.") + video),
             NotificationKind.Confirmed => (
                 "appointment.confirmed",
                 english ? "Appointment confirmed" : "تم تأكيد حجزك",
@@ -139,6 +148,7 @@ public sealed class NotificationService(
 
     private enum NotificationKind
     {
+        Received,
         Confirmed,
         CancelledByClinic,
         Reminder,

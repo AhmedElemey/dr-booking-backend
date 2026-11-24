@@ -59,6 +59,10 @@ public class Appointment
 
     public string? VideoHostUrl { get; set; }
 
+    public DateTime? CheckedInAt { get; set; }
+
+    public DateTime? StartedAt { get; set; }
+
     public DateTime? CompletedAt { get; set; }
 
     /// <summary>When the visit was first closed as Completed or No-show; the 24-hour correction window runs from here and a correction does not move it.</summary>

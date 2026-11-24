@@ -39,6 +39,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("cancelled_by");
 
+                    b.Property<DateTime?>("CheckedInAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("checked_in_at");
+
                     b.Property<DateTime?>("ClosedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("closed_at");
@@ -130,6 +134,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Property<Guid>("SlotId")
                         .HasColumnType("uuid")
                         .HasColumnName("slot_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -267,6 +275,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<decimal?>("DepositAmountEgp")
+                        .HasColumnType("numeric")
+                        .HasColumnName("deposit_amount_egp");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -311,6 +323,31 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasName("pk_clinics");
 
                     b.ToTable("clinics", (string)null);
+                });
+
+            modelBuilder.Entity("Moonlight.Api.Domain.ClinicFeatureOverride", b =>
+                {
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("clinic_id");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("ClinicId", "Key")
+                        .HasName("pk_clinic_feature_overrides");
+
+                    b.ToTable("clinic_feature_overrides", (string)null);
                 });
 
             modelBuilder.Entity("Moonlight.Api.Domain.ClinicHoliday", b =>
@@ -1780,6 +1817,18 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Navigation("Appointment");
 
                     b.Navigation("ChangedBy");
+                });
+
+            modelBuilder.Entity("Moonlight.Api.Domain.ClinicFeatureOverride", b =>
+                {
+                    b.HasOne("Moonlight.Api.Domain.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clinic_feature_overrides_clinics_clinic_id");
+
+                    b.Navigation("Clinic");
                 });
 
             modelBuilder.Entity("Moonlight.Api.Domain.ClinicHoliday", b =>

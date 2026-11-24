@@ -32,6 +32,8 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "POST /api/v1/dashboard/appointments",
         "POST /api/v1/dashboard/appointments/{id}/reschedule",
         "POST /api/v1/dashboard/appointments/{id}/cancel",
+        "POST /api/v1/dashboard/appointments/{id}/approve",
+        "POST /api/v1/dashboard/appointments/{id}/reject",
         "POST /api/v1/dashboard/appointments/{id}/complete",
         "POST /api/v1/dashboard/appointments/{id}/no-show",
         "POST /api/v1/dashboard/appointments/{id}/correct-status",
@@ -56,6 +58,8 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "POST /api/v1/admin/clinics",
         "PATCH /api/v1/admin/clinics/{id}/active",
         "POST /api/v1/admin/clinics/{id}/users",
+        "GET /api/v1/admin/clinics/{id}/features",
+        "PUT /api/v1/admin/clinics/{id}/features",
         "PATCH /api/v1/admin/users/{id}/active",
         "PATCH /api/v1/admin/users/{id}/admin",
         "GET /health",
@@ -139,6 +143,9 @@ public class SwaggerTests(PostgresFixture db) : IClassFixture<PostgresFixture>
         "GET /api/v1/dashboard/reports/revenue",
         "GET /api/v1/appointments/{id}/video",
         "GET /api/v1/dashboard/appointments/{id}/video",
+        "GET /api/v1/dashboard/appointments/queue",
+        "POST /api/v1/dashboard/appointments/{id}/check-in",
+        "POST /api/v1/dashboard/appointments/{id}/start",
     ];
 
     private static readonly string[] Anonymous =

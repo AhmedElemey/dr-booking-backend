@@ -144,7 +144,7 @@ public sealed class HolidayService(
         return new ImportHolidaysResultDto(created, skipped);
     }
 
-    // Confirmed appointments (in the caller's scope) that already sit on the holiday: they are left untouched.
+    // Confirmed and Pending appointments (in the caller's scope) that already sit on the holiday: they are left untouched.
     public async Task<List<DashboardAppointmentDto>> ConflictsAsync(Guid id, CancellationToken ct)
     {
         var clinicId = scope.ClinicId;
@@ -153,7 +153,7 @@ public sealed class HolidayService(
         var clinic = await scope.RequireClinicAsync(ct);
         var (start, end) = ClinicTime.DayRangeUtc(holiday.Date, holiday.Date, ClinicTime.FindZone(clinic.Timezone));
         var rows = await AppointmentMapper.WithDetails(scope.Appointments().AsNoTracking())
-            .Where(a => a.Status == AppointmentStatus.Confirmed && a.Slot!.StartsAt >= start && a.Slot.StartsAt < end)
+            .Where(a => (a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.Pending) && a.Slot!.StartsAt >= start && a.Slot.StartsAt < end)
             .OrderBy(a => a.Slot!.StartsAt).ThenBy(a => a.Id)
             .ToListAsync(ct);
         return rows.Select(mapper.ToDashboardDto).ToList();

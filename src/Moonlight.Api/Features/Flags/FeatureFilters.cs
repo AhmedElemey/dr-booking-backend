@@ -11,11 +11,23 @@ public sealed class RequireFeatureAttribute(string feature) : Attribute, IFilter
     public bool IsReusable => false;
 
     public IFilterMetadata CreateInstance(IServiceProvider serviceProvider) =>
-        new Filter(feature, serviceProvider.GetRequiredService<FeatureService>());
+        new Filter(feature, serviceProvider.GetRequiredService<FeatureService>(), serviceProvider.GetRequiredService<CurrentUser>());
 
-    private sealed class Filter(string feature, FeatureService features) : IActionFilter
+    private sealed class Filter(string feature, FeatureService features, CurrentUser current) : IActionFilter
     {
-        public void OnActionExecuting(ActionExecutingContext context) => features.Require(feature);
+        // Staff and doctor tokens carry a clinicId claim, so their checks are per clinic; patients and
+        // anonymous callers fall back to the deployment-wide value.
+        public void OnActionExecuting(ActionExecutingContext context)
+        {
+            if (current.ClinicId is { } clinicId)
+            {
+                features.Require(feature, clinicId);
+            }
+            else
+            {
+                features.Require(feature);
+            }
+        }
 
         public void OnActionExecuted(ActionExecutedContext context)
         {
