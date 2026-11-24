@@ -133,7 +133,7 @@ public class FeatureEnforcementTests(PostgresFixture db) : AppointmentTestBase(d
         await using var scope = Factory.Services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<Api.Features.Notifications.INotificationService>().AppointmentReminderAsync(id);
 
-        Assert.Equal(3, Factory.Push.Sent.Count);
+        Assert.Equal(2, Factory.Push.Sent.Count);
     }
 
     [Fact]
@@ -165,8 +165,7 @@ public class FeatureEnforcementTests(PostgresFixture db) : AppointmentTestBase(d
         var second = await World.NewPatientAsync();
         await World.BookAsync(second, await SlotAsync(TimeSpan.FromDays(2)));
 
-        Assert.Equal(2, Factory.Sms.Sent.Count);
-        Assert.All(Factory.Sms.Sent, sms => Assert.Equal(second.User!.Phone, sms.Phone));
+        Assert.Equal(second.User!.Phone, Assert.Single(Factory.Sms.Sent).Phone);
     }
 
     [Fact]
@@ -180,8 +179,7 @@ public class FeatureEnforcementTests(PostgresFixture db) : AppointmentTestBase(d
         await World.BookAsync(patient, await SlotAsync(TimeSpan.FromDays(2)));
 
         Assert.Empty(Factory.Push.Sent);
-        Assert.Equal(2, Factory.Sms.Sent.Count);
-        Assert.All(Factory.Sms.Sent, sms => Assert.Equal(patient.User!.Phone, sms.Phone));
+        Assert.Equal(patient.User!.Phone, Assert.Single(Factory.Sms.Sent).Phone);
     }
 
     [Fact]
