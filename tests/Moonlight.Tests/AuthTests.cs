@@ -7,7 +7,7 @@ namespace Moonlight.Tests;
 
 public class AuthTests(PostgresFixture db) : IClassFixture<PostgresFixture>, IAsyncLifetime
 {
-    private readonly MoonlightApiFactory _factory = new(db.ConnectionString);
+    private readonly MoonlightApiFactory _factory = new(db.ConnectionString) { RecordWhatsApp = true };
     private TestWorld _world = null!;
 
     public Task InitializeAsync()
