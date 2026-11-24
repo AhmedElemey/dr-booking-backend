@@ -30,5 +30,8 @@ public class Clinic
     // clinic.config.json amount applies.
     public decimal? DepositAmountEgp { get; set; }
 
+    // When false, public catalog responses hide consultation and service prices.
+    public bool ShowPrices { get; set; } = true;
+
     public DateTime CreatedAt { get; set; }
 }
