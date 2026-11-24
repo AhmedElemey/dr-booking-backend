@@ -19,7 +19,6 @@ public class MockPaymentTests(PostgresFixture db) : Phase2TestBase(db, new Dicti
         var patient = await World.NewPatientAsync();
         var response = await patient.PostAsync("/api/v1/appointments", new { slotId = (await SlotAsync(TimeSpan.FromDays(2))).Id, serviceId = Service.Id });
         Assert.Equal(201, response.StatusCode);
-        Assert.Equal(200, (await Staff.PostAsync($"/api/v1/dashboard/appointments/{response.Id}/approve")).StatusCode);
         return (response.Id, patient);
     }
 
@@ -184,7 +183,6 @@ public class PaymobWebhookTests(PostgresFixture db) : Phase2TestBase(db, new Dic
     {
         var response = await patient.PostAsync("/api/v1/appointments", new { slotId = (await SlotAsync(TimeSpan.FromDays(2))).Id, serviceId = Service.Id });
         Assert.Equal(201, response.StatusCode);
-        Assert.Equal(200, (await Staff.PostAsync($"/api/v1/dashboard/appointments/{response.Id}/approve")).StatusCode);
         return response.Id;
     }
 
