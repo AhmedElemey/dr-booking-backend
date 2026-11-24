@@ -397,6 +397,28 @@ public sealed class PaymentService(
         }
     }
 
+    /// <summary>A no-show corrected to completed: the forfeited paid online payment is refunded. Never throws.</summary>
+    public async Task RefundForNoShowCorrectionAsync(Guid appointmentId, CancellationToken ct)
+    {
+        try
+        {
+            var toRefund = await db.Payments.AsNoTracking()
+                .Where(p => p.AppointmentId == appointmentId && p.Status == PaymentStatus.Paid && p.Method == PaymentMethod.Online)
+                .Select(p => p.Id).ToListAsync(ct);
+            foreach (var id in toRefund)
+            {
+                if (await ClaimRefundAsync(id, ct) && !await FinishRefundAsync(id))
+                {
+                    logger.LogWarning("Refund of payment {PaymentId} was not accepted; it stays Paid for a manual refund.", id);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Automatic refund for appointment {AppointmentId} failed; refund it from the dashboard.", appointmentId);
+        }
+    }
+
     private async Task<bool> ClaimRefundAsync(Guid paymentId, CancellationToken ct) =>
         await db.Payments.Where(p => p.Id == paymentId && p.Status == PaymentStatus.Paid)
             .ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PaymentStatus.Refunding), ct) == 1;
