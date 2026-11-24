@@ -45,7 +45,7 @@ public class PendingApprovalTests(PostgresFixture db) : Phase2TestBase(db)
         await ExpireAsync();
         Assert.Equal(AppointmentStatus.Pending, (await AppointmentAsync(id)).Status);
 
-        Factory.Clock.Advance(TimeSpan.FromHours(3));
+        Factory.Clock.Advance(TimeSpan.FromHours(4));
         await ExpireAsync();
 
         var appointment = await AppointmentAsync(id);
