@@ -1,6 +1,6 @@
-# moonlight-backend
+# dr-booking-backend
 
-.NET 8 Web API for Moonlight, a dentist reservation platform. The MVP spec for all four Moonlight repos is in [docs/SPEC.md](docs/SPEC.md). This repo implements milestones M0 to M2: auth, catalog, schedule management, slots, appointments and notifications.
+.NET 8 Web API for Dr booking, a dentist reservation platform. The MVP spec for all four Dr booking repos is in [docs/SPEC.md](docs/SPEC.md). This repo implements milestones M0 to M2: auth, catalog, schedule management, slots, appointments and notifications.
 
 ## Run locally
 
@@ -18,7 +18,7 @@ Everything logs in with phone OTP. In Development and Staging the fixed code **`
 
 | Role | Name | Phone | Notes |
 |---|---|---|---|
-| `PlatformAdmin` | `<clinic name> Admin` (Moonlight Admin by default) | `+201000000001` (`01000000001`) | admin endpoints |
+| `PlatformAdmin` | `<clinic name> Admin` (Dr booking Admin by default) | `+201000000001` (`01000000001`) | admin endpoints |
 | `ClinicStaff` | Mona Reception | `+201000000002` | Smile Care Clinic |
 | `Doctor` | Dr. Amr Hassan | `+201000000011` | General Dentistry, slug `dr-amr-hassan` |
 | `Doctor` | Dr. Sara Mahmoud | `+201000000012` | Orthodontics, slug `dr-sara-mahmoud` |
@@ -78,7 +78,7 @@ Environment variables use `__` for nesting (`Jwt__Key`).
 
 Each clinic's identity lives in one file, [`clinic.config.json`](clinic.config.json) at the repo root (validated by [`clinic.config.schema.json`](clinic.config.schema.json), logo in `branding/`). The API loads it at startup and **refuses to start** with a message listing every problem if it is missing or invalid. It is copied next to the binaries on build and into the Docker image on publish. The same file is used by the website, mobile app and console repos.
 
-It sets the clinic name (Arabic and English), tagline, colours, logo, support phone, app ids and the **default feature switches**. The clinic name replaces "Moonlight" everywhere users see it: the OTP SMS, the Swagger title and the dev admin account name. To rebrand a copy of this repo for a clinic, edit `clinic.config.json` and replace `branding/logo.svg`; no code changes.
+It sets the clinic name (Arabic and English), tagline, colours, logo, support phone, app ids and the **default feature switches**. The clinic name replaces "Dr booking" everywhere users see it: the OTP SMS, the Swagger title and the dev admin account name. To rebrand a copy of this repo for a clinic, edit `clinic.config.json` and replace `branding/logo.svg`; no code changes.
 
 Public endpoints (anonymous):
 
