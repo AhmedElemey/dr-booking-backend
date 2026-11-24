@@ -26,5 +26,9 @@ public class Clinic
 
     public bool IsActive { get; set; } = true;
 
+    // Fixed booking deposit for this clinic, set by the platform admin. When null the deployment's
+    // clinic.config.json amount applies.
+    public decimal? DepositAmountEgp { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }
