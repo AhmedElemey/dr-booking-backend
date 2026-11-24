@@ -33,10 +33,14 @@ public sealed class ClinicManagementService(MoonlightDbContext db, DashboardScop
         clinic.Phone = request.Phone!.Trim();
         clinic.Latitude = request.Latitude;
         clinic.Longitude = request.Longitude;
+        if (request.ShowPrices is not null)
+        {
+            clinic.ShowPrices = request.ShowPrices.Value;
+        }
         await db.SaveChangesAsync(ct);
         return ToDto(clinic);
     }
 
     public static ClinicDto ToDto(Domain.Clinic c) => new(
-        c.Id, c.NameAr, c.NameEn, c.AddressAr, c.AddressEn, c.City, c.Latitude, c.Longitude, c.Phone, c.Timezone, c.IsActive);
+        c.Id, c.NameAr, c.NameEn, c.AddressAr, c.AddressEn, c.City, c.Latitude, c.Longitude, c.Phone, c.Timezone, c.IsActive, c.ShowPrices);
 }
