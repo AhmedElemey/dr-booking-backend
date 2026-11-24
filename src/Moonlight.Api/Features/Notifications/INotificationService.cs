@@ -5,6 +5,8 @@ public interface INotificationService
 {
     Task AppointmentConfirmedAsync(Guid appointmentId, CancellationToken ct = default);
 
+    Task AppointmentReceivedAsync(Guid appointmentId, CancellationToken ct = default);
+
     Task AppointmentCancelledByClinicAsync(Guid appointmentId, CancellationToken ct = default);
 
     Task AppointmentReminderAsync(Guid appointmentId, CancellationToken ct = default);
