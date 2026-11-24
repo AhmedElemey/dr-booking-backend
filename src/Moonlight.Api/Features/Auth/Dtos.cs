@@ -18,6 +18,7 @@ public sealed record UserDto(
     string PreferredLanguage,
     Guid? ClinicId,
     Guid? DoctorId,
+    bool IsClinicAdmin,
     bool WhatsAppOptIn,
     bool MarketingOptIn);
 
