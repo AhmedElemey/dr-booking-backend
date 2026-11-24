@@ -195,29 +195,11 @@ public sealed class TestWorld(MoonlightApiFactory factory)
         WithDbAsync(db => Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstAsync(db.Slots.Where(s => s.Id == slotId).Select(s => s.Status)));
 
     // Books through the patient API and returns the appointment id.
-    private readonly Dictionary<Guid, Session> _staffByClinic = new();
-
     public async Task<Guid> BookAsync(Session patient, Slot slot)
     {
         var response = await patient.PostAsync("/api/v1/appointments", new { slotId = slot.Id });
         Assert.Equal(201, response.StatusCode);
-        // Patient bookings start Pending; most tests want a confirmed visit, so approve it through the dashboard.
-        var staff = await StaffForAsync(slot.ClinicId);
-        var approved = await staff.PostAsync($"/api/v1/dashboard/appointments/{response.Id}/approve");
-        Assert.Equal(200, approved.StatusCode);
         return response.Id;
-    }
-
-    private async Task<Session> StaffForAsync(Guid clinicId)
-    {
-        if (!_staffByClinic.TryGetValue(clinicId, out var staff))
-        {
-            var clinic = await WithDbAsync(async db => (await db.Clinics.FindAsync(clinicId))!);
-            staff = await LoginAsync(await NewStaffAsync(clinic));
-            _staffByClinic[clinicId] = staff;
-        }
-
-        return staff;
     }
 
     private static string Slug(string name) => name.ToLowerInvariant().Replace(' ', '-') + "-" + Guid.NewGuid().ToString("N")[..6];
