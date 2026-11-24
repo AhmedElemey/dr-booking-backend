@@ -62,7 +62,7 @@
     "features": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mobileApp", "website", "guestBrowsing", "patientSelfService", "pushReminders", "smsNotifications", "englishLanguage", "multiBranch", "videoConsultation", "waitingList", "familyAccounts", "whatsappReminders", "onlinePayments", "insurance", "holidayCalendar", "workingHoursTemplates", "patientRecords", "reviews", "promotions", "recallCampaigns", "reports"],
+      "required": ["mobileApp", "website", "guestBrowsing", "patientSelfService", "pushReminders", "smsNotifications", "englishLanguage", "multiBranch", "videoConsultation", "waitingList", "familyAccounts", "whatsappReminders", "onlinePayments", "insurance", "holidayCalendar", "workingHoursTemplates", "patientRecords", "reviews", "promotions", "recallCampaigns", "reports", "liveQueue", "manualReview", "publicPrices"],
       "properties": {
         "mobileApp": { "type": "boolean" },
         "website": { "type": "boolean" },
@@ -84,7 +84,10 @@
         "reviews": { "type": "boolean" },
         "promotions": { "type": "boolean" },
         "recallCampaigns": { "type": "boolean" },
-        "reports": { "type": "boolean" }
+        "reports": { "type": "boolean" },
+        "liveQueue": { "type": "boolean" },
+        "manualReview": { "type": "boolean" },
+        "publicPrices": { "type": "boolean" }
       }
     }
   }

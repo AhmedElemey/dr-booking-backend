@@ -31,6 +31,9 @@
     "reviews": false,
     "promotions": false,
     "recallCampaigns": false,
-    "reports": false
+    "reports": false,
+    "liveQueue": false,
+    "manualReview": false,
+    "publicPrices": true
   }
 }

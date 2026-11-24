@@ -25,6 +25,9 @@ public static class FeatureKeys
     public const string Promotions = "promotions";
     public const string RecallCampaigns = "recallCampaigns";
     public const string Reports = "reports";
+    public const string LiveQueue = "liveQueue";
+    public const string ManualReview = "manualReview";
+    public const string PublicPrices = "publicPrices";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -49,6 +52,9 @@ public static class FeatureKeys
         Promotions,
         RecallCampaigns,
         Reports,
+        LiveQueue,
+        ManualReview,
+        PublicPrices,
     ];
 }
 
@@ -68,17 +74,57 @@ public sealed record FeatureSnapshot(IReadOnlyDictionary<string, bool> Features,
 public sealed class FeatureService
 {
     private readonly IReadOnlyDictionary<string, bool> _defaults;
+    private readonly ClinicFeatureOverrides? _overrides;
+    private readonly AsyncLocal<Guid?> _clinic = new();
     private volatile FeatureSnapshot _current;
 
-    public FeatureService(ClinicConfig config, TimeProvider clock)
+    public FeatureService(ClinicConfig config, TimeProvider clock, ClinicFeatureOverrides? overrides = null)
     {
+        _overrides = overrides;
         _defaults = Normalize(null, config.Features);
         _current = new FeatureSnapshot(_defaults, FeatureSources.Defaults, clock.GetUtcNow().UtcDateTime);
     }
 
     public FeatureSnapshot Current => _current;
 
-    public bool IsEnabled(string key) => _current.Features.TryGetValue(key, out var on) && on;
+    /// <summary>
+    /// The switch for the clinic of this request: the clinic set with <see cref="UseClinic"/> (staff and doctor tokens, or the clinic
+    /// of the slot or doctor being read), else the only clinic of a single-clinic deployment, else the deployment-wide value.
+    /// </summary>
+    public bool IsEnabled(string key)
+    {
+        if (_overrides is not null && (_clinic.Value ?? _overrides.SoleClinicId) is { } clinicId && _overrides.Get(clinicId, key) is { } over)
+        {
+            return over;
+        }
+
+        return IsGlobalEnabled(key);
+    }
+
+    private bool IsGlobalEnabled(string key) => _current.Features.TryGetValue(key, out var on) && on;
+
+    /// <summary>The platform admin's per-clinic override wins over the deployment-wide value.</summary>
+    public bool IsEnabled(string key, Guid clinicId) => _overrides?.Get(clinicId, key) ?? IsGlobalEnabled(key);
+
+    /// <summary>Makes every <see cref="IsEnabled(string)"/> call in this async flow answer for one clinic until the scope is disposed.</summary>
+    public IDisposable UseClinic(Guid? clinicId)
+    {
+        var previous = _clinic.Value;
+        _clinic.Value = clinicId;
+        return new Scope(() => _clinic.Value = previous);
+    }
+
+    /// <summary>All switches as one clinic sees them (the override wins); with no clinic, the only clinic of a single-clinic deployment.</summary>
+    public IReadOnlyDictionary<string, bool> EffectiveFor(Guid? clinicId)
+    {
+        var id = clinicId ?? _clinic.Value ?? _overrides?.SoleClinicId;
+        return FeatureKeys.All.ToDictionary(k => k, k => id is { } c ? IsEnabled(k, c) : IsGlobalEnabled(k));
+    }
+
+    private sealed class Scope(Action onDispose) : IDisposable
+    {
+        public void Dispose() => onDispose();
+    }
 
     /// <summary>Known keys only; keys missing from <paramref name="incoming"/> take the clinic.config.json default.</summary>
     public IReadOnlyDictionary<string, bool> Merge(IReadOnlyDictionary<string, bool>? incoming) => Normalize(incoming, _defaults);
@@ -90,6 +136,15 @@ public sealed class FeatureService
     public void Require(string key)
     {
         if (!IsEnabled(key))
+        {
+            throw ApiException.FeatureDisabled(key);
+        }
+    }
+
+    /// <summary>Throws FEATURE_DISABLED (403) when the feature is off for this clinic.</summary>
+    public void Require(string key, Guid clinicId)
+    {
+        if (!IsEnabled(key, clinicId))
         {
             throw ApiException.FeatureDisabled(key);
         }

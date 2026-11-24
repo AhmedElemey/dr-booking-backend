@@ -14,12 +14,13 @@ public sealed record FeaturesDto(IReadOnlyDictionary<string, bool> Features, str
 public class FeaturesController(FeatureService features) : ControllerBase
 {
     /// <summary>Feature switches in effect for this clinic. <c>source</c> is <c>console</c> (live), <c>cache</c> (last copy from the console, loaded after a restart) or <c>defaults</c> (clinic.config.json).</summary>
+    /// <remarks>Pass <c>clinicId</c> to see the switches as that clinic has them (the platform admin's overrides apply). Without it a single-clinic deployment answers for its only clinic.</remarks>
     [HttpGet]
-    [ResponseCache(Duration = 60, Location = ResponseCacheLocation.Any)]
     [ProducesResponseType(typeof(FeaturesDto), StatusCodes.Status200OK)]
-    public FeaturesDto Get()
+    public FeaturesDto Get(Guid? clinicId = null)
     {
         var current = features.Current;
-        return new FeaturesDto(current.Features, current.Source, current.UpdatedAt);
+        Response.Headers.CacheControl = "public, max-age=60";
+        return new FeaturesDto(features.EffectiveFor(clinicId), current.Source, current.UpdatedAt);
     }
 }

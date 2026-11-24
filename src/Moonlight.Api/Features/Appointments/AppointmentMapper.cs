@@ -21,7 +21,7 @@ public sealed class AppointmentMapper(Language lang, FeatureService features, Cl
             .Include(a => a.Review)
             .Include(a => a.Payments);
 
-    public AppointmentDto ToPatientDto(Appointment a)
+    public AppointmentDto ToPatientDto(Appointment a, int? queuePosition = null)
     {
         var slot = a.Slot!;
         var doctor = slot.Doctor!;
@@ -52,7 +52,8 @@ public sealed class AppointmentMapper(Language lang, FeatureService features, Cl
             ToFamily(a.FamilyMember),
             ToInsurance(a),
             features.IsEnabled(FeatureKeys.Reviews) && a.Status == AppointmentStatus.Completed && a.Review is null,
-            ToReview(a.Review));
+            ToReview(a.Review),
+            queuePosition);
     }
 
     public DashboardAppointmentDto ToDashboardDto(Appointment a)
@@ -84,7 +85,9 @@ public sealed class AppointmentMapper(Language lang, FeatureService features, Cl
             DepositPaidOf(a),
             ToFamily(a.FamilyMember),
             ToInsurance(a),
-            ToReview(a.Review));
+            ToReview(a.Review),
+            a.CheckedInAt,
+            a.StartedAt);
     }
 
     // The fixed deposit the clinic asks for at booking (0 when deposits are off), capped at the appointment total.
