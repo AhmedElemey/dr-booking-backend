@@ -44,7 +44,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         ConnectionString = new NpgsqlConnectionStringBuilder(_adminConnectionString)
         {
             Database = _databaseName,
-            MaxPoolSize = 30,
+            MaxPoolSize = 10,
         }.ConnectionString;
 
         var options = new DbContextOptionsBuilder<MoonlightDbContext>().UseNpgsql(ConnectionString).UseSnakeCaseNamingConvention().Options;
