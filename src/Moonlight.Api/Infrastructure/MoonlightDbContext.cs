@@ -30,6 +30,8 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
 
     public DbSet<FeatureState> FeatureStates => Set<FeatureState>();
 
+    public DbSet<ClinicFeatureOverride> ClinicFeatureOverrides => Set<ClinicFeatureOverride>();
+
     public DbSet<ClinicHoliday> ClinicHolidays => Set<ClinicHoliday>();
 
     public DbSet<WorkingHoursTemplate> WorkingHoursTemplates => Set<WorkingHoursTemplate>();
@@ -81,6 +83,13 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.Property(c => c.City).HasMaxLength(100);
             e.Property(c => c.Phone).HasMaxLength(30);
             e.Property(c => c.Timezone).HasMaxLength(64);
+        });
+
+        modelBuilder.Entity<ClinicFeatureOverride>(e =>
+        {
+            e.HasKey(o => new { o.ClinicId, o.Key });
+            e.Property(o => o.Key).HasMaxLength(64);
+            e.HasOne(o => o.Clinic).WithMany().HasForeignKey(o => o.ClinicId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ClinicStaff>(e =>
