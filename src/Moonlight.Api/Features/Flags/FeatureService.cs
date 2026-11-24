@@ -25,6 +25,8 @@ public static class FeatureKeys
     public const string Promotions = "promotions";
     public const string RecallCampaigns = "recallCampaigns";
     public const string Reports = "reports";
+    public const string ManualReview = "manualReview";
+    public const string PublicPrices = "publicPrices";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -49,6 +51,8 @@ public static class FeatureKeys
         Promotions,
         RecallCampaigns,
         Reports,
+        ManualReview,
+        PublicPrices,
     ];
 }
 
@@ -68,10 +72,12 @@ public sealed record FeatureSnapshot(IReadOnlyDictionary<string, bool> Features,
 public sealed class FeatureService
 {
     private readonly IReadOnlyDictionary<string, bool> _defaults;
+    private readonly ClinicFeatureOverrides? _overrides;
     private volatile FeatureSnapshot _current;
 
-    public FeatureService(ClinicConfig config, TimeProvider clock)
+    public FeatureService(ClinicConfig config, TimeProvider clock, ClinicFeatureOverrides? overrides = null)
     {
+        _overrides = overrides;
         _defaults = Normalize(null, config.Features);
         _current = new FeatureSnapshot(_defaults, FeatureSources.Defaults, clock.GetUtcNow().UtcDateTime);
     }
@@ -79,6 +85,9 @@ public sealed class FeatureService
     public FeatureSnapshot Current => _current;
 
     public bool IsEnabled(string key) => _current.Features.TryGetValue(key, out var on) && on;
+
+    /// <summary>The platform admin's per-clinic override wins over the deployment-wide value.</summary>
+    public bool IsEnabled(string key, Guid clinicId) => _overrides?.Get(clinicId, key) ?? IsEnabled(key);
 
     /// <summary>Known keys only; keys missing from <paramref name="incoming"/> take the clinic.config.json default.</summary>
     public IReadOnlyDictionary<string, bool> Merge(IReadOnlyDictionary<string, bool>? incoming) => Normalize(incoming, _defaults);
@@ -90,6 +99,15 @@ public sealed class FeatureService
     public void Require(string key)
     {
         if (!IsEnabled(key))
+        {
+            throw ApiException.FeatureDisabled(key);
+        }
+    }
+
+    /// <summary>Throws FEATURE_DISABLED (403) when the feature is off for this clinic.</summary>
+    public void Require(string key, Guid clinicId)
+    {
+        if (!IsEnabled(key, clinicId))
         {
             throw ApiException.FeatureDisabled(key);
         }
