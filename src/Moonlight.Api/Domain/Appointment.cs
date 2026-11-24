@@ -59,6 +59,10 @@ public class Appointment
 
     public string? VideoHostUrl { get; set; }
 
+    public DateTime? CheckedInAt { get; set; }
+
+    public DateTime? StartedAt { get; set; }
+
     public DateTime? CompletedAt { get; set; }
 
     public DateTime? ReviewPromptSentAt { get; set; }
