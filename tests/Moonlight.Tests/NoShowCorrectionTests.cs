@@ -22,11 +22,11 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
         World.WithDbAsync(d => d.AppointmentStatusCorrections.AsNoTracking().Where(c => c.AppointmentId == id).OrderBy(c => c.CreatedAt).ToListAsync());
 
     [Fact]
-    public async Task Staff_correct_a_completed_visit_to_no_show_with_an_audit_row()
+    public async Task A_clinic_admin_corrects_a_completed_visit_to_no_show_with_an_audit_row()
     {
         var (id, _, _) = await CompletedVisitAsync();
 
-        var response = await Staff.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow", reason = "marked by mistake" });
+        var response = await ClinicAdmin.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow", reason = "marked by mistake" });
 
         Assert.Equal(200, response.StatusCode);
         Assert.Equal("NoShow", response["status"].GetString());
@@ -36,12 +36,12 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
         var correction = Assert.Single(await CorrectionsAsync(id));
         Assert.Equal(AppointmentStatus.Completed, correction.FromStatus);
         Assert.Equal(AppointmentStatus.NoShow, correction.ToStatus);
-        Assert.Equal(Staff.User!.Id, correction.ChangedByUserId);
+        Assert.Equal(ClinicAdmin.User!.Id, correction.ChangedByUserId);
         Assert.Equal("marked by mistake", correction.Reason);
     }
 
     [Fact]
-    public async Task A_corrected_no_show_is_completed_and_the_paid_online_payment_is_refunded()
+    public async Task A_corrected_no_show_is_completed_and_the_paid_payment_is_not_refunded()
     {
         var (id, _, _) = await NoShowVisitAsync();
         var paymentId = await World.WithDbAsync(async d =>
@@ -62,13 +62,13 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
             return payment.Id;
         });
 
-        var response = await Staff.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "Completed" });
+        var response = await ClinicAdmin.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "Completed" });
 
         Assert.Equal(200, response.StatusCode);
         Assert.Equal("Completed", response["status"].GetString());
         var payment = await World.WithDbAsync(d => d.Payments.AsNoTracking().FirstAsync(p => p.Id == paymentId));
-        Assert.Equal(PaymentStatus.Refunded, payment.Status);
-        Assert.NotNull(payment.RefundedAt);
+        Assert.Equal(PaymentStatus.Paid, payment.Status);
+        Assert.Null(payment.RefundedAt);
     }
 
     [Fact]
@@ -77,10 +77,42 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
         var (id, _, _) = await CompletedVisitAsync();
         Factory.Clock.Advance(TimeSpan.FromHours(25));
 
-        var response = await Staff.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
+        var response = await ClinicAdmin.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
 
         Assert.Equal(409, response.StatusCode);
         Assert.Equal("INVALID_TRANSITION", response.Code);
+        Assert.Equal(AppointmentStatus.Completed, (await AppointmentAsync(id)).Status);
+        Assert.Empty(await CorrectionsAsync(id));
+    }
+
+    [Fact]
+    public async Task The_24_hour_window_runs_from_closing_the_visit_not_from_later_updates()
+    {
+        var (id, _, _) = await CompletedVisitAsync();
+        Factory.Clock.Advance(TimeSpan.FromHours(20));
+        await World.WithDbAsync(async d =>
+        {
+            var row = await d.Appointments.FirstAsync(a => a.Id == id);
+            row.UpdatedAt = Now;
+            await d.SaveChangesAsync();
+            return true;
+        });
+        Factory.Clock.Advance(TimeSpan.FromHours(5));
+
+        var response = await ClinicAdmin.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
+
+        Assert.Equal(409, response.StatusCode);
+        Assert.Equal(AppointmentStatus.Completed, (await AppointmentAsync(id)).Status);
+    }
+
+    [Fact]
+    public async Task Reception_staff_who_are_not_clinic_admins_cannot_correct()
+    {
+        var (id, _, _) = await CompletedVisitAsync();
+
+        var response = await Staff.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
+
+        Assert.Equal(403, response.StatusCode);
         Assert.Equal(AppointmentStatus.Completed, (await AppointmentAsync(id)).Status);
         Assert.Empty(await CorrectionsAsync(id));
     }
@@ -92,11 +124,11 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
         var patient = await World.NewPatientAsync();
         var id = await World.BookAsync(patient, slot);
 
-        var notTerminal = await Staff.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
+        var notTerminal = await ClinicAdmin.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
         Assert.Equal(409, notTerminal.StatusCode);
         Assert.Equal("INVALID_TRANSITION", notTerminal.Code);
 
-        var badTarget = await Staff.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "Cancelled" });
+        var badTarget = await ClinicAdmin.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "Cancelled" });
         Assert.Equal(400, badTarget.StatusCode);
         Assert.Equal("VALIDATION_FAILED", badTarget.Code);
 
@@ -116,7 +148,7 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
         Assert.Equal(200, before.StatusCode);
         Assert.Equal(2, before["noShowCount"].GetInt32());
 
-        var corrected = await Staff.PostAsync($"{Dash(second)}/correct-status", new { toStatus = "Completed" });
+        var corrected = await ClinicAdmin.PostAsync($"{Dash(second)}/correct-status", new { toStatus = "Completed" });
         Assert.Equal(200, corrected.StatusCode);
 
         var after = await Staff.GetAsync($"/api/v1/dashboard/patients/{patient.User.Id}");
@@ -156,7 +188,7 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
     public async Task Staff_of_another_clinic_cannot_correct()
     {
         var clinicB = await World.NewClinicAsync("B");
-        var staffB = await World.LoginAsync(await World.NewStaffAsync(clinicB));
+        var staffB = await World.LoginAsync(await World.NewStaffAsync(clinicB, isAdmin: true));
         var (id, _, _) = await CompletedVisitAsync();
 
         var response = await staffB.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "NoShow" });
