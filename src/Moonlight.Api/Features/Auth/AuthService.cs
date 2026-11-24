@@ -46,8 +46,8 @@ public sealed class AuthService(
         });
         await db.SaveChangesAsync(ct);
 
-        // With whatsappReminders on, the code goes out on WhatsApp (decision 3: no SMS). If WhatsApp fails, SMS is the fallback so login never breaks.
-        if (features.IsEnabled(FeatureKeys.WhatsappReminders))
+        // With whatsappOtp on, the code goes out on WhatsApp (decision 3: no SMS). If WhatsApp fails, SMS is the fallback so login never breaks.
+        if (features.IsEnabled(FeatureKeys.WhatsappOtp))
         {
             var settings = whatsAppOptions.Value;
             var template = string.IsNullOrWhiteSpace(settings.OtpTemplate) ? "otp_code" : settings.OtpTemplate;
