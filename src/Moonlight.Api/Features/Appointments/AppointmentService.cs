@@ -219,6 +219,55 @@ public sealed class AppointmentService(
     public Task<DashboardAppointmentDto> NoShowAsync(Guid id, CancellationToken ct) =>
         CloseOutAsync(id, AppointmentStatus.NoShow, ct);
 
+    /// <summary>How long after closing a visit the staff may correct a mistaken Completed/NoShow.</summary>
+    private static readonly TimeSpan CorrectionWindow = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// Corrects a mistaken terminal status (Completed &lt;-&gt; NoShow) within 24 hours of closing the visit.
+    /// Every correction is audit-logged; a corrected no-show refunds the paid online payment (the deposit)
+    /// and drops out of the patient's no-show count.
+    /// </summary>
+    public async Task<DashboardAppointmentDto> CorrectStatusAsync(Guid id, CorrectStatusDto request, CancellationToken ct)
+    {
+        if (!Enum.TryParse<AppointmentStatus>(request.ToStatus, ignoreCase: true, out var to) || to is not (AppointmentStatus.Completed or AppointmentStatus.NoShow))
+        {
+            throw ApiException.Validation(nameof(request.ToStatus), "A correction target must be Completed or NoShow.");
+        }
+
+        ValidateReason(request.Reason);
+        var appointment = await LoadScopedAsync(id, ct);
+        var from = appointment.Status;
+        if (from == to || from is not (AppointmentStatus.Completed or AppointmentStatus.NoShow))
+        {
+            throw new ApiException(ErrorCodes.InvalidTransition, "Only a completed or no-show visit can be corrected.");
+        }
+
+        if (Now - appointment.UpdatedAt > CorrectionWindow)
+        {
+            throw new ApiException(ErrorCodes.InvalidTransition, "Status corrections are allowed within 24 hours of closing the visit.");
+        }
+
+        appointment.Status = to;
+        appointment.CompletedAt = to == AppointmentStatus.Completed ? Now : null;
+        appointment.UpdatedAt = Now;
+        db.AppointmentStatusCorrections.Add(new AppointmentStatusCorrection
+        {
+            AppointmentId = appointment.Id,
+            ChangedByUserId = current.Id,
+            FromStatus = from,
+            ToStatus = to,
+            Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim(),
+            CreatedAt = Now,
+        });
+        await SaveTransitionAsync(ct);
+        if (from == AppointmentStatus.NoShow && to == AppointmentStatus.Completed)
+        {
+            await payments.RefundForNoShowCorrectionAsync(appointment.Id, ct);
+        }
+
+        return await GetDashboardAsync(id, ct);
+    }
+
     // ---- Core ---------------------------------------------------------------------------------------------------
 
     private async Task<DashboardAppointmentDto> CloseOutAsync(Guid id, AppointmentStatus target, CancellationToken ct)
