@@ -42,17 +42,20 @@ public class PendingApprovalTests(PostgresFixture db) : Phase2TestBase(db)
         await RegisterDeviceAsync(patient);
         var before = Factory.Push.Sent.Count;
 
-        Assert.Equal(0, await ExpireAsync());
+        await ExpireAsync();
         Assert.Equal(AppointmentStatus.Pending, (await AppointmentAsync(id)).Status);
 
         Factory.Clock.Advance(TimeSpan.FromHours(3));
-        Assert.Equal(1, await ExpireAsync());
+        await ExpireAsync();
 
         var appointment = await AppointmentAsync(id);
         Assert.Equal(AppointmentStatus.Cancelled, appointment.Status);
         Assert.Equal(CancelledBy.Clinic, appointment.CancelledBy);
         Assert.Equal(before + 1, Factory.Push.Sent.Count);
-        Assert.Equal(0, await ExpireAsync());
+
+        // A second run does not expire it again or notify twice.
+        await ExpireAsync();
+        Assert.Equal(before + 1, Factory.Push.Sent.Count);
     }
 
     [Fact]
@@ -63,7 +66,7 @@ public class PendingApprovalTests(PostgresFixture db) : Phase2TestBase(db)
 
         Factory.Clock.Advance(TimeSpan.FromHours(4));
 
-        Assert.Equal(0, await ExpireAsync());
+        await ExpireAsync();
         Assert.Equal(AppointmentStatus.Confirmed, (await AppointmentAsync(id)).Status);
     }
 
