@@ -102,9 +102,11 @@ public sealed class AppointmentMapper(Language lang, FeatureService features, Cl
 
     public static AppointmentPaymentStatus PaymentStatusOf(Appointment a)
     {
-        if (a.Payments.Any(p => p.Status is PaymentStatus.Paid or PaymentStatus.Refunding))
+        var live = a.Payments.Where(p => p.Status is PaymentStatus.Paid or PaymentStatus.Refunding).ToList();
+        if (live.Count > 0)
         {
-            return AppointmentPaymentStatus.Paid;
+            // Only a deposit is paid: the balance is settled at the clinic.
+            return live.All(p => p.Kind == PaymentKind.Deposit) ? AppointmentPaymentStatus.DepositPaid : AppointmentPaymentStatus.Paid;
         }
 
         if (a.Payments.Any(p => p.Status == PaymentStatus.Pending))
