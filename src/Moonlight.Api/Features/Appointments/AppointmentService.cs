@@ -221,7 +221,12 @@ public sealed class AppointmentService(
     {
         ValidateReason(reason);
         var appointment = await LoadScopedAsync(id, ct);
-        EnsureConfirmed(appointment);
+        // A checked-in visit can still be cancelled until the slot starts (a mistaken check-in must not trap the booking).
+        if (appointment.Status != AppointmentStatus.CheckedIn)
+        {
+            EnsureConfirmed(appointment);
+        }
+
         var slot = await db.Slots.FirstAsync(s => s.Id == appointment.SlotId, ct);
         if (!AppointmentRules.CanClinicCancel(Now, slot.StartsAt))
         {

@@ -54,6 +54,21 @@ public class QueueTests(PostgresFixture db) : Phase2TestBase(db, new Dictionary<
     }
 
     [Fact]
+    public async Task A_checked_in_visit_can_be_cancelled_by_staff_before_the_slot_starts()
+    {
+        Enable(FeatureKeys.LiveQueue);
+        var (id, _) = await BookedTodayAsync(TimeSpan.FromHours(2));
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(id)}/check-in")).StatusCode);
+
+        var cancelled = await Staff.PostAsync($"{Dash(id)}/cancel");
+        Assert.Equal(200, cancelled.StatusCode);
+        Assert.Equal("Cancelled", cancelled["status"].GetString());
+
+        var queue = await Staff.GetAsync(QueueUrl);
+        Assert.Empty(queue.Body.EnumerateArray());
+    }
+
+    [Fact]
     public async Task Check_in_before_the_visit_day_is_rejected()
     {
         Enable(FeatureKeys.LiveQueue);
