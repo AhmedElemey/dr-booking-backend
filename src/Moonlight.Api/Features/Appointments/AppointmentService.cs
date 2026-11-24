@@ -255,8 +255,14 @@ public sealed class AppointmentService(
         }
 
         var slot = await db.Slots.FirstAsync(s => s.Id == appointment.SlotId, ct);
+        // Only a visit that is in progress today blocks the doctor; an InProgress row left over from an earlier day does not.
+        var zone = ClinicTime.FindZone((await scope.RequireClinicAsync(ct)).Timezone);
+        var today = ClinicTime.LocalDate(Now, zone);
+        var dayStart = ClinicTime.StartOfDayUtc(today, zone);
+        var dayEnd = ClinicTime.StartOfDayUtc(today.AddDays(1), zone);
         var doctorBusy = await db.Appointments.AnyAsync(
-            a => a.Id != id && a.Status == AppointmentStatus.InProgress && a.Slot!.DoctorId == slot.DoctorId, ct);
+            a => a.Id != id && a.Status == AppointmentStatus.InProgress && a.Slot!.DoctorId == slot.DoctorId &&
+                 a.Slot.StartsAt >= dayStart && a.Slot.StartsAt < dayEnd, ct);
         if (doctorBusy)
         {
             throw new ApiException(ErrorCodes.InvalidTransition, "Another patient is with the doctor now.");
@@ -276,11 +282,10 @@ public sealed class AppointmentService(
         var today = ClinicTime.LocalDate(Now, zone);
         var dayStart = ClinicTime.StartOfDayUtc(today, zone);
         var dayEnd = ClinicTime.StartOfDayUtc(today.AddDays(1), zone);
-        var now = Now;
+        // A Confirmed visit stays in the queue after its slot time passes: a late patient is still expected until staff mark a no-show.
         var query = AppointmentMapper.WithDetails(scope.Appointments().AsNoTracking())
             .Where(a => a.Slot!.StartsAt >= dayStart && a.Slot!.StartsAt < dayEnd)
-            .Where(a => a.Status == AppointmentStatus.InProgress || a.Status == AppointmentStatus.CheckedIn ||
-                        (a.Status == AppointmentStatus.Confirmed && a.Slot!.StartsAt >= now));
+            .Where(a => a.Status == AppointmentStatus.InProgress || a.Status == AppointmentStatus.CheckedIn || a.Status == AppointmentStatus.Confirmed);
         if (doctorId is { } doctor)
         {
             if (!await scope.Doctors().AnyAsync(d => d.Id == doctor, ct))
