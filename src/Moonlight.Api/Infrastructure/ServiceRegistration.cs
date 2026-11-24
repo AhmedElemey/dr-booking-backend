@@ -157,6 +157,7 @@ public static class ServiceRegistration
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ReminderProcessor>();
         services.AddScoped<ReviewPromptProcessor>();
+        services.AddScoped<PendingExpiryProcessor>();
         services.AddScoped<MaintenanceProcessor>();
         if (configuration.GetValue("Reminders:Enabled", true))
         {
@@ -223,7 +224,8 @@ public static class ServiceRegistration
         services.AddAuthorization();
 
         // MVC
-        services.AddControllers()
+        services.AddScoped<ClinicFeatureScopeFilter>();
+        services.AddControllers(options => options.Filters.AddService<ClinicFeatureScopeFilter>())
             .AddJsonOptions(json =>
             {
                 json.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
