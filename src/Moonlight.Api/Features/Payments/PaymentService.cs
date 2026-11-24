@@ -79,6 +79,9 @@ public sealed class PaymentService(
             appointment = await AppointmentMapper.WithDetails(db.Appointments)
                 .FirstOrDefaultAsync(a => a.Id == appointmentId && a.PatientUserId == userId, ct) ?? throw ApiException.NotFound();
             var total = TotalOf(appointment);
+            // With deposits on, the first (and only) online checkout charges the fixed deposit; the rest is settled at the clinic.
+            var charge = clinic.DepositAmountEgp > 0 ? Math.Min(clinic.DepositAmountEgp, total) : total;
+            var kind = charge < total ? PaymentKind.Deposit : PaymentKind.Full;
             var payable = appointment.Status == AppointmentStatus.Confirmed
                 && appointment.Slot!.StartsAt > Now
                 && total > 0
@@ -97,8 +100,9 @@ public sealed class PaymentService(
             payment = new Payment
             {
                 AppointmentId = appointment.Id,
-                AmountEgp = total,
+                AmountEgp = charge,
                 Method = PaymentMethod.Online,
+                Kind = kind,
                 Provider = provider.Name,
                 ReturnUrl = returnUrl,
                 CreatedAt = Now,
