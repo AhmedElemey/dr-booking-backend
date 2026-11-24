@@ -21,6 +21,10 @@ public enum AppointmentStatus
     Cancelled,
     Completed,
     NoShow,
+
+    // Live queue: the patient announced themselves at the clinic; the visit is with the doctor now.
+    CheckedIn,
+    InProgress,
 }
 
 public enum CancelledBy
