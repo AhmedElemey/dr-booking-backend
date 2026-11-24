@@ -61,6 +61,9 @@ public class Appointment
 
     public DateTime? CompletedAt { get; set; }
 
+    /// <summary>When the visit was first closed as Completed or No-show; the 24-hour correction window runs from here and a correction does not move it.</summary>
+    public DateTime? ClosedAt { get; set; }
+
     public DateTime? ReviewPromptSentAt { get; set; }
 
     public List<Payment> Payments { get; set; } = [];
