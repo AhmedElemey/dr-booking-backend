@@ -33,6 +33,7 @@
       }
     },
     "logo": { "type": "string", "minLength": 1, "description": "Path of the logo file relative to this file (SVG or PNG)." },
+    "depositAmountEgp": { "type": "number", "minimum": 0, "default": 0 },
     "supportPhone": { "type": "string", "pattern": "^\\+?[0-9 ()-]{6,20}$" },
     "website": {
       "type": "object",
@@ -61,7 +62,7 @@
     "features": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mobileApp", "website", "guestBrowsing", "patientSelfService", "pushReminders", "smsNotifications", "englishLanguage", "multiBranch", "videoConsultation", "waitingList", "familyAccounts", "whatsappReminders", "onlinePayments", "insurance", "holidayCalendar", "workingHoursTemplates", "patientRecords", "reviews", "promotions", "recallCampaigns", "reports", "manualReview", "publicPrices"],
+      "required": ["mobileApp", "website", "guestBrowsing", "patientSelfService", "pushReminders", "smsNotifications", "englishLanguage", "multiBranch", "videoConsultation", "waitingList", "familyAccounts", "whatsappReminders", "onlinePayments", "insurance", "holidayCalendar", "workingHoursTemplates", "patientRecords", "reviews", "promotions", "recallCampaigns", "reports", "liveQueue", "manualReview", "publicPrices"],
       "properties": {
         "mobileApp": { "type": "boolean" },
         "website": { "type": "boolean" },
@@ -83,7 +84,11 @@
         "reviews": { "type": "boolean" },
         "promotions": { "type": "boolean" },
         "recallCampaigns": { "type": "boolean" },
-        "reports": { "type": "boolean" }, "manualReview": { "type": "boolean" }, "publicPrices": { "type": "boolean" }
+        "reports": { "type": "boolean" },
+        "reports": { "type": "boolean" },
+        "liveQueue": { "type": "boolean" },
+        "manualReview": { "type": "boolean" },
+        "publicPrices": { "type": "boolean" }
       }
     }
   }
