@@ -10,7 +10,7 @@ using Moonlight.Api.Features.Reviews;
 
 namespace Moonlight.Api.Features.Appointments;
 
-public sealed class AppointmentMapper(Language lang, FeatureService features)
+public sealed class AppointmentMapper(Language lang, FeatureService features, ClinicConfig config)
 {
     public static IQueryable<Appointment> WithDetails(IQueryable<Appointment> query) =>
         query.Include(a => a.Slot!).ThenInclude(s => s.Doctor!).ThenInclude(d => d.Clinic)
@@ -47,6 +47,8 @@ public sealed class AppointmentMapper(Language lang, FeatureService features)
             a.DiscountEgp,
             Math.Max(0, price - a.DiscountEgp),
             PaymentStatusOf(a),
+            DepositRequiredOf(a, price),
+            DepositPaidOf(a),
             ToFamily(a.FamilyMember),
             ToInsurance(a),
             features.IsEnabled(FeatureKeys.Reviews) && a.Status == AppointmentStatus.Completed && a.Review is null,
@@ -78,10 +80,19 @@ public sealed class AppointmentMapper(Language lang, FeatureService features)
             a.DiscountEgp,
             Math.Max(0, price - a.DiscountEgp),
             PaymentStatusOf(a),
+            DepositRequiredOf(a, price),
+            DepositPaidOf(a),
             ToFamily(a.FamilyMember),
             ToInsurance(a),
             ToReview(a.Review));
     }
+
+    // The fixed deposit the clinic asks for at booking (0 when deposits are off), capped at the appointment total.
+    private decimal DepositRequiredOf(Appointment a, decimal price) =>
+        config.DepositAmountEgp > 0 ? Math.Min(config.DepositAmountEgp, Math.Max(0, price - a.DiscountEgp)) : 0m;
+
+    private static decimal DepositPaidOf(Appointment a) =>
+        a.Payments.Where(p => p.Kind == PaymentKind.Deposit && p.Status is PaymentStatus.Paid or PaymentStatus.Refunding).Sum(p => p.AmountEgp);
 
     // The price snapshot taken at booking; appointments that predate it fall back to the current service price / doctor fee.
     private static decimal PriceOf(Appointment a) => a.PriceEgp ?? CouponService.PriceOf(a.Slot!.Doctor!, a.Service) ?? 0m;
