@@ -46,3 +46,7 @@ After deployment, temporarily inspect the resolved client IP with synthetic requ
 Outside Development, JWT keys containing the public development markers are refused. Use a private generated signing key, not a value copied from development settings.
 
 Hosted synthetic demo mode raises the shared per-IP OTP allowance to at least 200/hour while keeping the existing per-phone limits. This mitigates the website server-side proxy bucket; it does not establish real-client-IP forwarding or remove the need to verify trust topology. Production limits are unchanged. The concurrent refund test now permits either the patient cancellation or one staff refund to win. It still requires exactly one provider call, final Refunded state, only 200-Refunded or 409 staff responses, at most one successful staff response, and successful patient cancellation. PaymentService is unchanged.
+
+### Measured forwarding on Render (backend-test)
+
+Measured with a temporary log (removed). The app's direct sender is loopback (`::1`). `X-Forwarded-For` arrives as `[any client-supplied entries, real client, Cloudflare address, 10.x Render hop]`; `CF-Connecting-IP` is the real client. The 10.x hop varied between 10.24, 10.27 and 10.28. A forged leftmost entry stays leftmost. Trusting the real client therefore needs `ReverseProxy__KnownProxies__0=::1`, the 10.x hop and Cloudflare's published ranges in `ReverseProxy__KnownNetworks__N`, and `ReverseProxy__ForwardLimit=3`. Limit 1 or 2 returns the hop address, not the client. Nothing is enabled by default.
