@@ -85,7 +85,6 @@
         "promotions": { "type": "boolean" },
         "recallCampaigns": { "type": "boolean" },
         "reports": { "type": "boolean" },
-        "reports": { "type": "boolean" },
         "liveQueue": { "type": "boolean" },
         "manualReview": { "type": "boolean" },
         "publicPrices": { "type": "boolean" }
