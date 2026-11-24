@@ -62,6 +62,22 @@ public class DashboardAppointmentsController(AppointmentService appointments) : 
     public Task<DashboardAppointmentDto> Cancel(Guid id, CancelAppointmentDto? request, CancellationToken ct) =>
         appointments.DashboardCancelAsync(id, request?.Reason, ct);
 
+    /// <summary>Approve a Pending booking. The patient is notified that the visit is confirmed.</summary>
+    [HttpPost("{id:guid}/approve")]
+    [ProducesResponseType(typeof(DashboardAppointmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
+    public Task<DashboardAppointmentDto> Approve(Guid id, CancellationToken ct) =>
+        appointments.DashboardApproveAsync(id, ct);
+
+    /// <summary>Reject a Pending booking (cancelledBy = Clinic). The slot is freed and the patient is notified.</summary>
+    [HttpPost("{id:guid}/reject")]
+    [ProducesResponseType(typeof(DashboardAppointmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiProblem), StatusCodes.Status409Conflict)]
+    public Task<DashboardAppointmentDto> Reject(Guid id, CancelAppointmentDto? request, CancellationToken ct) =>
+        appointments.DashboardRejectAsync(id, request?.Reason, ct);
+
     /// <summary>Mark a started appointment Completed.</summary>
     [HttpPost("{id:guid}/complete")]
     [ProducesResponseType(typeof(DashboardAppointmentDto), StatusCodes.Status200OK)]
