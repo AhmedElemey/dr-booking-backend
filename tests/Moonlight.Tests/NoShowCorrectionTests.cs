@@ -97,7 +97,8 @@ public class NoShowCorrectionTests(PostgresFixture db) : Phase2TestBase(db)
         Assert.Equal("INVALID_TRANSITION", notTerminal.Code);
 
         var badTarget = await Staff.PostAsync($"{Dash(id)}/correct-status", new { toStatus = "Cancelled" });
-        Assert.Equal(422, badTarget.StatusCode);
+        Assert.Equal(400, badTarget.StatusCode);
+        Assert.Equal("VALIDATION_FAILED", badTarget.Code);
 
         Assert.Equal(AppointmentStatus.Confirmed, (await AppointmentAsync(id)).Status);
         Assert.Empty(await CorrectionsAsync(id));
