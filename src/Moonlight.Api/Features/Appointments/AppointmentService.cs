@@ -50,9 +50,9 @@ public sealed class AppointmentService(
         var extras = await BuildExtrasAsync(slot, service, current.Id, request, ct);
 
         var appointment = await CreateAsync(
-            slot, current.Id, request.ServiceId, request.PatientNote, createdBy: current.Id, enforceLimits: true, extras, ct);
+            slot, current.Id, request.ServiceId, request.PatientNote, createdBy: current.Id, enforceLimits: true, extras, ct, requiresApproval: true);
         await waitingList.MarkBookedAsync(current.Id, extras.FamilyMemberId, slot.DoctorId, slot.StartsAt, ct);
-        await notifications.AppointmentConfirmedAsync(appointment.Id, ct);
+        await notifications.AppointmentReceivedAsync(appointment.Id, ct);
         return await GetPatientAsync(appointment.Id, ct);
     }
 
@@ -68,8 +68,8 @@ public sealed class AppointmentService(
         var now = Now;
         var query = AppointmentMapper.WithDetails(db.Appointments.AsNoTracking()).Where(a => a.PatientUserId == userId);
         query = upcoming
-            ? query.Where(a => a.Status == AppointmentStatus.Confirmed && a.Slot!.StartsAt >= now)
-            : query.Where(a => a.Status != AppointmentStatus.Confirmed || a.Slot!.StartsAt < now);
+            ? query.Where(a => (a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.Pending) && a.Slot!.StartsAt >= now)
+            : query.Where(a => (a.Status != AppointmentStatus.Confirmed && a.Status != AppointmentStatus.Pending) || a.Slot!.StartsAt < now);
         var ordered = upcoming
             ? query.OrderBy(a => a.Slot!.StartsAt).ThenBy(a => a.Id)
             : query.OrderByDescending(a => a.Slot!.StartsAt).ThenBy(a => a.Id);
@@ -90,8 +90,15 @@ public sealed class AppointmentService(
         var userId = current.Id;
         var appointment = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.PatientUserId == userId, ct)
             ?? throw ApiException.NotFound();
-        EnsureConfirmed(appointment);
         var slot = await db.Slots.FirstAsync(s => s.Id == appointment.SlotId, ct);
+        if (appointment.Status == AppointmentStatus.Pending)
+        {
+            // The clinic has not confirmed yet, so a pending booking cancels freely, without the cancel window.
+            await CancelAsync(appointment, slot, CancelledBy.Patient, reason, ct);
+            return await GetPatientAsync(id, ct);
+        }
+
+        EnsureConfirmed(appointment);
         if (!AppointmentRules.IsInsidePatientWindow(Now, slot.StartsAt, TimeSpan.FromHours(Booking.PatientCancelWindowHours)))
         {
             throw new ApiException(ErrorCodes.CancelWindowPassed);
@@ -213,6 +220,38 @@ public sealed class AppointmentService(
         return await GetDashboardAsync(id, ct);
     }
 
+    /// <summary>Approve a Pending booking. The patient is notified that the visit is confirmed.</summary>
+    public async Task<DashboardAppointmentDto> DashboardApproveAsync(Guid id, CancellationToken ct)
+    {
+        var appointment = await LoadScopedAsync(id, ct);
+        if (appointment.Status != AppointmentStatus.Pending)
+        {
+            throw new ApiException(ErrorCodes.InvalidTransition, $"The appointment is already {appointment.Status}.");
+        }
+
+        appointment.Status = AppointmentStatus.Confirmed;
+        appointment.UpdatedAt = Now;
+        await SaveTransitionAsync(ct);
+        await notifications.AppointmentConfirmedAsync(id, ct);
+        return await GetDashboardAsync(id, ct);
+    }
+
+    /// <summary>Reject a Pending booking: the appointment is cancelled (cancelledBy = Clinic), the slot is freed and the patient is notified.</summary>
+    public async Task<DashboardAppointmentDto> DashboardRejectAsync(Guid id, string? reason, CancellationToken ct)
+    {
+        ValidateReason(reason);
+        var appointment = await LoadScopedAsync(id, ct);
+        if (appointment.Status != AppointmentStatus.Pending)
+        {
+            throw new ApiException(ErrorCodes.InvalidTransition, $"The appointment is already {appointment.Status}.");
+        }
+
+        var slot = await db.Slots.FirstAsync(s => s.Id == appointment.SlotId, ct);
+        await CancelAsync(appointment, slot, CancelledBy.Clinic, reason, ct);
+        await notifications.AppointmentCancelledByClinicAsync(id, ct);
+        return await GetDashboardAsync(id, ct);
+    }
+
     public Task<DashboardAppointmentDto> CompleteAsync(Guid id, CancellationToken ct) =>
         CloseOutAsync(id, AppointmentStatus.Completed, ct);
 
@@ -252,7 +291,7 @@ public sealed class AppointmentService(
         CouponEvaluation? Coupon);
 
     private async Task<Appointment> CreateAsync(
-        Slot slot, Guid patientId, Guid? serviceId, string? note, Guid createdBy, bool enforceLimits, BookingExtras extras, CancellationToken ct)
+        Slot slot, Guid patientId, Guid? serviceId, string? note, Guid createdBy, bool enforceLimits, BookingExtras extras, CancellationToken ct, bool requiresApproval = false)
     {
         var now = Now;
         var minStart = enforceLimits ? now.AddMinutes(Booking.MinLeadMinutes) : now;
@@ -281,7 +320,7 @@ public sealed class AppointmentService(
             ServiceId = serviceId,
             PatientNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             CreatedByUserId = createdBy,
-            Status = AppointmentStatus.Confirmed,
+            Status = requiresApproval ? AppointmentStatus.Pending : AppointmentStatus.Confirmed,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -403,15 +442,18 @@ public sealed class AppointmentService(
     private async Task EnforceLimitsAsync(Guid patientId, Guid? familyMemberId, Slot slot, Guid? excludeAppointmentId, bool checkTotal, CancellationToken ct)
     {
         var now = Now;
-        var confirmed = db.Appointments.Where(a => a.PatientUserId == patientId && a.FamilyMemberId == familyMemberId && a.Status == AppointmentStatus.Confirmed);
+        // Pending bookings count too: they hold the slot and are expected to be confirmed by the clinic.
+        var active = db.Appointments.Where(a =>
+            a.PatientUserId == patientId && a.FamilyMemberId == familyMemberId &&
+            (a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.Pending));
         if (excludeAppointmentId is { } excluded)
         {
-            confirmed = confirmed.Where(a => a.Id != excluded);
+            active = active.Where(a => a.Id != excluded);
         }
 
         if (checkTotal)
         {
-            var upcoming = await confirmed.CountAsync(a => a.Slot!.StartsAt > now, ct);
+            var upcoming = await active.CountAsync(a => a.Slot!.StartsAt > now, ct);
             if (upcoming >= Booking.MaxUpcomingPerPatient)
             {
                 throw new ApiException(ErrorCodes.BookingLimit);
@@ -422,7 +464,7 @@ public sealed class AppointmentService(
         var zone = ClinicTime.FindZone(clinicTimezone);
         var day = ClinicTime.LocalDate(slot.StartsAt, zone);
         var (start, end) = ClinicTime.DayRangeUtc(day, day, zone);
-        var sameDay = await confirmed.AnyAsync(a => a.Slot!.DoctorId == slot.DoctorId && a.Slot.StartsAt >= start && a.Slot.StartsAt < end, ct);
+        var sameDay = await active.AnyAsync(a => a.Slot!.DoctorId == slot.DoctorId && a.Slot.StartsAt >= start && a.Slot.StartsAt < end, ct);
         if (sameDay)
         {
             throw new ApiException(ErrorCodes.BookingLimit);
