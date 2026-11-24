@@ -49,7 +49,9 @@ public sealed class VideoService(MoonlightDbContext db, CurrentUser current, Das
         }
 
         var now = clock.GetUtcNow().UtcDateTime;
-        var open = appointment.Status is AppointmentStatus.Confirmed or AppointmentStatus.Completed && now >= Opens(appointment) && now <= Closes(appointment);
+        // A visit already with the doctor (InProgress) always opens its video link, whatever the slot clock says.
+        var open = appointment.Status == AppointmentStatus.InProgress
+            || (appointment.Status is AppointmentStatus.Confirmed or AppointmentStatus.Completed && now >= Opens(appointment) && now <= Closes(appointment));
         if (!open)
         {
             throw new ApiException(
