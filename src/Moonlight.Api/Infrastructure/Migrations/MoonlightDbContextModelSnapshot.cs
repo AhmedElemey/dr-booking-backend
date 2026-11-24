@@ -39,6 +39,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("cancelled_by");
 
+                    b.Property<DateTime?>("CheckedInAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("checked_in_at");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
@@ -126,6 +130,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Property<Guid>("SlotId")
                         .HasColumnType("uuid")
                         .HasColumnName("slot_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -824,6 +832,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("provider_ref");
 
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1056,6 +1068,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("return_url");
 
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1187,6 +1203,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("sent_at");
 
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1295,6 +1315,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("reply");
 
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1394,6 +1418,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Property<DateTime>("StartsAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("starts_at");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1579,6 +1607,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Property<Guid?>("ServiceId")
                         .HasColumnType("uuid")
                         .HasColumnName("service_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
