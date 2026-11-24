@@ -44,7 +44,8 @@ public sealed record ClinicDto(
     double? Longitude,
     string Phone,
     string Timezone,
-    bool IsActive);
+    bool IsActive,
+    bool ShowPrices);
 
 public sealed record UpdateClinicDto(
     string? NameAr,
@@ -54,7 +55,8 @@ public sealed record UpdateClinicDto(
     string? City,
     string? Phone,
     double? Latitude,
-    double? Longitude);
+    double? Longitude,
+    bool? ShowPrices);
 
 public sealed record ManagedSlotDto(
     Guid Id,
