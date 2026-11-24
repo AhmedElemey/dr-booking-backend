@@ -39,6 +39,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("cancelled_by");
 
+                    b.Property<DateTime?>("CheckedInAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("checked_in_at");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
@@ -126,6 +130,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Property<Guid>("SlotId")
                         .HasColumnType("uuid")
                         .HasColumnName("slot_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -249,6 +257,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("character varying(30)")
                         .HasColumnName("phone");
 
+                    b.Property<bool>("ShowPrices")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_prices");
+
                     b.Property<string>("Timezone")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -339,6 +351,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Property<Guid>("ClinicId")
                         .HasColumnType("uuid")
                         .HasColumnName("clinic_id");
+
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_admin");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
@@ -1049,6 +1065,12 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
 
                     b.Property<string>("Method")
                         .IsRequired()
