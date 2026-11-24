@@ -17,7 +17,7 @@ using Moonlight.Api.Infrastructure.Storage;
 
 namespace Moonlight.Api.Features.Records;
 
-public sealed record PatientListItemDto(Guid Id, string? FullName, string Phone, DateTime? LastVisitAt, int AppointmentsCount);
+public sealed record PatientListItemDto(Guid Id, string? FullName, string Phone, DateTime? LastVisitAt, int AppointmentsCount, int NoShowCount);
 
 public sealed record MedicalInfoDto(Guid? FamilyMemberId, string? BloodType, string? Allergies, string? ChronicConditions, string? Medications, DateTime UpdatedAt);
 
@@ -49,6 +49,7 @@ public sealed record RecordInputDto(
 
 public sealed record PatientDetailDto(
     PatientRefDto Patient,
+    int NoShowCount,
     IReadOnlyList<FamilyMemberDto> FamilyMembers,
     MedicalInfoDto? MedicalInfo,
     IReadOnlyList<DashboardAppointmentDto> Appointments,
@@ -100,11 +101,12 @@ public sealed partial class RecordsService(
                 u.Phone,
                 LastVisitAt = appointments.Where(a => a.PatientUserId == u.Id && a.Status == AppointmentStatus.Completed).Max(a => (DateTime?)a.Slot!.StartsAt),
                 Count = appointments.Count(a => a.PatientUserId == u.Id && a.Status != AppointmentStatus.Cancelled),
+                NoShows = appointments.Count(a => a.PatientUserId == u.Id && a.Status == AppointmentStatus.NoShow),
             })
             .OrderByDescending(x => x.LastVisitAt).ThenBy(x => x.FullName).ThenBy(x => x.Id)
             .Skip(page.Skip).Take(page.PageSize)
             .ToListAsync(ct);
-        return (rows.Select(x => new PatientListItemDto(x.Id, x.FullName, x.Phone, x.LastVisitAt, x.Count)).ToList(), total);
+        return (rows.Select(x => new PatientListItemDto(x.Id, x.FullName, x.Phone, x.LastVisitAt, x.Count, x.NoShows)).ToList(), total);
     }
 
     public async Task<PatientDetailDto> GetPatientAsync(Guid userId, Guid? familyMemberId, CancellationToken ct)
@@ -128,8 +130,11 @@ public sealed partial class RecordsService(
         var records = await RecordQuery().Where(r => r.PatientUserId == userId && (familyMemberId == null || r.FamilyMemberId == familyMemberId))
             .OrderByDescending(r => r.CreatedAt).ThenBy(r => r.Id).ToListAsync(ct);
 
+        var noShows = await scope.Appointments().AsNoTracking().CountAsync(a => a.PatientUserId == userId && a.Status == AppointmentStatus.NoShow, ct);
+
         return new PatientDetailDto(
             new PatientRefDto(patient.Id, patient.FullName, patient.Phone),
+            noShows,
             members.Select(m => new FamilyMemberDto(m.Id, m.FullName, m.Relation, m.DateOfBirth, m.Gender, m.CreatedAt)).ToList(),
             info is null ? null : ToDto(info),
             appointments.Select(mapper.ToDashboardDto).ToList(),

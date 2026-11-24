@@ -22,6 +22,8 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
 
     public DbSet<Appointment> Appointments => Set<Appointment>();
 
+    public DbSet<AppointmentStatusCorrection> AppointmentStatusCorrections => Set<AppointmentStatusCorrection>();
+
     public DbSet<OtpCode> OtpCodes => Set<OtpCode>();
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
@@ -184,6 +186,16 @@ public class MoonlightDbContext(DbContextOptions<MoonlightDbContext> options) : 
             e.HasOne(a => a.InsuranceProvider).WithMany().HasForeignKey(a => a.InsuranceProviderId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(a => a.Payments).WithOne(p => p.Appointment).HasForeignKey(p => p.AppointmentId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(a => a.Review).WithOne().HasForeignKey<Review>(r => r.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AppointmentStatusCorrection>(e =>
+        {
+            e.Property(c => c.FromStatus).HasConversion<string>().HasMaxLength(20);
+            e.Property(c => c.ToStatus).HasConversion<string>().HasMaxLength(20);
+            e.Property(c => c.Reason).HasMaxLength(500);
+            e.HasIndex(c => c.AppointmentId);
+            e.HasOne(c => c.Appointment).WithMany().HasForeignKey(c => c.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(c => c.ChangedBy).WithMany().HasForeignKey(c => c.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<User>(e =>

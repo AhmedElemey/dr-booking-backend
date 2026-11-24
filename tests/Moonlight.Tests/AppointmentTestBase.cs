@@ -31,9 +31,14 @@ public abstract class AppointmentTestBase(PostgresFixture db, Dictionary<string,
 
     protected Session Staff { get; private set; } = null!;
 
+    protected Session ClinicAdmin { get; private set; } = null!;
+
     protected Session DoctorSession { get; private set; } = null!;
 
     protected DateTime Now => Factory.Clock.UtcNow;
+
+    // Tests that depend on the time of day override this to run on a fixed clock.
+    protected virtual DateTimeOffset? PinnedNow => null;
 
     public virtual async Task InitializeAsync()
     {
@@ -45,11 +50,17 @@ public abstract class AppointmentTestBase(PostgresFixture db, Dictionary<string,
 
         ConnectionString = (_own ?? _shared).ConnectionString;
         Factory = new MoonlightApiFactory(ConnectionString, settings: settings, configureServices: ConfigureServices);
+        if (PinnedNow is { } pinned)
+        {
+            Factory.Clock.Set(pinned);
+        }
+
         World = new TestWorld(Factory);
         Clinic = await World.NewClinicAsync();
         Doctor = await World.NewDoctorAsync(Clinic);
         Service = await World.NewServiceAsync(Doctor);
         Staff = await World.LoginAsync(await World.NewStaffAsync(Clinic));
+        ClinicAdmin = await World.LoginAsync(await World.NewStaffAsync(Clinic, isAdmin: true));
         DoctorSession = await World.LoginAsync((await World.WithDbAsync(d => d.Users.FindAsync(Doctor.UserId).AsTask()))!);
     }
 

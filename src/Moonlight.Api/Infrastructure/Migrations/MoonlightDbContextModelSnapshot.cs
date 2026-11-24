@@ -43,6 +43,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("checked_in_at");
 
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
@@ -192,6 +196,54 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasFilter("status <> 'Cancelled'");
 
                     b.ToTable("appointments", (string)null);
+                });
+
+            modelBuilder.Entity("Moonlight.Api.Domain.AppointmentStatusCorrection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("appointment_id");
+
+                    b.Property<Guid>("ChangedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("changed_by_user_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FromStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("from_status");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("ToStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("to_status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_appointment_status_corrections");
+
+                    b.HasIndex("AppointmentId")
+                        .HasDatabaseName("ix_appointment_status_corrections_appointment_id");
+
+                    b.HasIndex("ChangedByUserId")
+                        .HasDatabaseName("ix_appointment_status_corrections_changed_by_user_id");
+
+                    b.ToTable("appointment_status_corrections", (string)null);
                 });
 
             modelBuilder.Entity("Moonlight.Api.Domain.Clinic", b =>
@@ -1744,6 +1796,27 @@ namespace Moonlight.Api.Infrastructure.Migrations
                     b.Navigation("Service");
 
                     b.Navigation("Slot");
+                });
+
+            modelBuilder.Entity("Moonlight.Api.Domain.AppointmentStatusCorrection", b =>
+                {
+                    b.HasOne("Moonlight.Api.Domain.Appointment", "Appointment")
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_appointment_status_corrections_appointments_appointment_id");
+
+                    b.HasOne("Moonlight.Api.Domain.User", "ChangedBy")
+                        .WithMany()
+                        .HasForeignKey("ChangedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_appointment_status_corrections_users_changed_by_user_id");
+
+                    b.Navigation("Appointment");
+
+                    b.Navigation("ChangedBy");
                 });
 
             modelBuilder.Entity("Moonlight.Api.Domain.ClinicFeatureOverride", b =>
