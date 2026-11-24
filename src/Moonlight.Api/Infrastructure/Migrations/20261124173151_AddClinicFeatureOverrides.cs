@@ -12,6 +12,12 @@ namespace Moonlight.Api.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<decimal>(
+                name: "deposit_amount_egp",
+                table: "clinics",
+                type: "numeric",
+                nullable: true);
+
             migrationBuilder.CreateTable(
                 name: "clinic_feature_overrides",
                 columns: table => new
@@ -38,6 +44,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
         {
             migrationBuilder.DropTable(
                 name: "clinic_feature_overrides");
+
+            migrationBuilder.DropColumn(
+                name: "deposit_amount_egp",
+                table: "clinics");
         }
     }
 }
