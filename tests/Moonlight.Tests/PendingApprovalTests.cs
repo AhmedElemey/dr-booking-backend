@@ -1,10 +1,72 @@
+using Microsoft.Extensions.DependencyInjection;
+
 using Moonlight.Api.Domain;
+using Moonlight.Api.Features.Flags;
+using Moonlight.Api.Features.Notifications;
 
 namespace Moonlight.Tests;
 
-// Q2: a patient booking starts Pending and the clinic approves or rejects it.
-public class PendingApprovalTests(PostgresFixture db) : AppointmentTestBase(db)
+// Q2: with the manualReview switch on, a patient booking starts Pending and the clinic approves or rejects it.
+// The switch is off by default (clinic.config.json), so bookings are Confirmed at once unless a test turns it on.
+public class PendingApprovalTests(PostgresFixture db) : Phase2TestBase(db)
 {
+    public override async Task InitializeAsync()
+    {
+        await base.InitializeAsync();
+        Enable(FeatureKeys.ManualReview);
+    }
+
+    private async Task<int> ExpireAsync()
+    {
+        await using var scope = Factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<PendingExpiryProcessor>().RunOnceAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task With_manual_review_off_a_patient_booking_is_confirmed_at_once()
+    {
+        Disable(FeatureKeys.ManualReview);
+        var patient = await World.NewPatientAsync();
+        var slot = await SlotAsync(TimeSpan.FromDays(1));
+
+        var response = await patient.PostAsync("/api/v1/appointments", new { slotId = slot.Id });
+
+        Assert.Equal(201, response.StatusCode);
+        Assert.Equal("Confirmed", response["status"].GetString());
+    }
+
+    [Fact]
+    public async Task An_unanswered_pending_booking_expires_when_its_visit_time_arrives()
+    {
+        var (id, slot, patient) = await BookPendingAsync(TimeSpan.FromHours(3));
+        await RegisterDeviceAsync(patient);
+        var before = Factory.Push.Sent.Count;
+
+        Assert.Equal(0, await ExpireAsync());
+        Assert.Equal(AppointmentStatus.Pending, (await AppointmentAsync(id)).Status);
+
+        Factory.Clock.Advance(TimeSpan.FromHours(3));
+        Assert.Equal(1, await ExpireAsync());
+
+        var appointment = await AppointmentAsync(id);
+        Assert.Equal(AppointmentStatus.Cancelled, appointment.Status);
+        Assert.Equal(CancelledBy.Clinic, appointment.CancelledBy);
+        Assert.Equal(before + 1, Factory.Push.Sent.Count);
+        Assert.Equal(0, await ExpireAsync());
+    }
+
+    [Fact]
+    public async Task A_confirmed_booking_is_never_expired()
+    {
+        var (id, _, _) = await BookPendingAsync(TimeSpan.FromHours(3));
+        Assert.Equal(200, (await Staff.PostAsync($"{Dash(id)}/approve")).StatusCode);
+
+        Factory.Clock.Advance(TimeSpan.FromHours(4));
+
+        Assert.Equal(0, await ExpireAsync());
+        Assert.Equal(AppointmentStatus.Confirmed, (await AppointmentAsync(id)).Status);
+    }
+
     private async Task<(Guid Id, Slot Slot, Session Patient)> BookPendingAsync(TimeSpan fromNow)
     {
         var patient = await World.NewPatientAsync();
