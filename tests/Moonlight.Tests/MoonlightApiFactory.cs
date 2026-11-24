@@ -41,6 +41,9 @@ public sealed class MoonlightApiFactory : WebApplicationFactory<Program>
 
     public RecordingWhatsAppSender WhatsApp { get; } = new();
 
+    // Off by default so the provider-guard tests keep the real configured sender; AuthTests turns it on.
+    public bool RecordWhatsApp { get; init; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(_environment);
@@ -73,8 +76,12 @@ public sealed class MoonlightApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IPushSender>(Push);
             services.RemoveAll<ISmsSender>();
             services.AddSingleton<ISmsSender>(Sms);
-            services.RemoveAll<IWhatsAppSender>();
-            services.AddSingleton<IWhatsAppSender>(WhatsApp);
+            if (RecordWhatsApp)
+            {
+                services.RemoveAll<IWhatsAppSender>();
+                services.AddSingleton<IWhatsAppSender>(WhatsApp);
+            }
+
             _configureServices?.Invoke(services);
         });
     }
