@@ -32,6 +32,9 @@ public class ClinicStaff
     public Guid ClinicId { get; set; }
 
     public Clinic? Clinic { get; set; }
+
+    // Clinic admin: manages the clinic's staff and sensitive corrections (status correction, refunds). Ordinary reception has this off.
+    public bool IsAdmin { get; set; }
 }
 
 public class OtpCode
