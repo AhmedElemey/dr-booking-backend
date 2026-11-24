@@ -245,6 +245,10 @@ namespace Moonlight.Api.Infrastructure.Migrations
                         .HasColumnType("character varying(30)")
                         .HasColumnName("phone");
 
+                    b.Property<bool>("ShowPrices")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_prices");
+
                     b.Property<string>("Timezone")
                         .IsRequired()
                         .HasMaxLength(64)
