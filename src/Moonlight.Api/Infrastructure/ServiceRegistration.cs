@@ -76,6 +76,7 @@ public static class ServiceRegistration
         }
 
         services.AddSingleton(clinic);
+        services.AddSingleton<ClinicFeatureOverrides>();
         services.AddSingleton<FeatureService>();
 
         // Options
