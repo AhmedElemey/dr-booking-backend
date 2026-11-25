@@ -47,36 +47,6 @@ Outside Development, JWT keys containing the public development markers are refu
 
 Hosted synthetic demo mode raises the shared per-IP OTP allowance to at least 200/hour while keeping the existing per-phone limits. This mitigates the website server-side proxy bucket; it does not establish real-client-IP forwarding or remove the need to verify trust topology. Production limits are unchanged. The concurrent refund test now permits either the patient cancellation or one staff refund to win. It still requires exactly one provider call, final Refunded state, only 200-Refunded or 409 staff responses, at most one successful staff response, and successful patient cancellation. PaymentService is unchanged.
 
-### Measured forwarding on Render (backend-test and console)
+### Forwarding on Render
 
-Measured with a temporary log (since removed). The app's direct sender is loopback (`::1`). `X-Forwarded-For` arrives as `[client-supplied entries, real client, Cloudflare address, 10.x Render hop]`, and `CF-Connecting-IP` is the real client. A forged leftmost entry stays leftmost. The 10.x hop varied (10.24, 10.27, 10.28). Limit 1 or 2 returns the hop address, not the client, so the settings below use limit 3. Nothing is trusted by default in code; set these environment variables on the Render service (Cloudflare ranges from https://www.cloudflare.com/ips-v4 and https://www.cloudflare.com/ips-v6):
-
-```
-ReverseProxy__KnownProxies__0=::1
-ReverseProxy__ForwardLimit=3
-ReverseProxy__KnownNetworks__0=10.0.0.0/8
-ReverseProxy__KnownNetworks__1=173.245.48.0/20
-ReverseProxy__KnownNetworks__2=103.21.244.0/22
-ReverseProxy__KnownNetworks__3=103.22.200.0/22
-ReverseProxy__KnownNetworks__4=103.31.4.0/22
-ReverseProxy__KnownNetworks__5=141.101.64.0/18
-ReverseProxy__KnownNetworks__6=108.162.192.0/18
-ReverseProxy__KnownNetworks__7=190.93.240.0/20
-ReverseProxy__KnownNetworks__8=188.114.96.0/20
-ReverseProxy__KnownNetworks__9=197.234.240.0/22
-ReverseProxy__KnownNetworks__10=198.41.128.0/17
-ReverseProxy__KnownNetworks__11=162.158.0.0/15
-ReverseProxy__KnownNetworks__12=104.16.0.0/13
-ReverseProxy__KnownNetworks__13=104.24.0.0/14
-ReverseProxy__KnownNetworks__14=172.64.0.0/13
-ReverseProxy__KnownNetworks__15=131.0.72.0/22
-ReverseProxy__KnownNetworks__16=2400:cb00::/32
-ReverseProxy__KnownNetworks__17=2606:4700::/32
-ReverseProxy__KnownNetworks__18=2803:f800::/32
-ReverseProxy__KnownNetworks__19=2405:b500::/32
-ReverseProxy__KnownNetworks__20=2405:8100::/32
-ReverseProxy__KnownNetworks__21=2a06:98c0::/29
-ReverseProxy__KnownNetworks__22=2c0f:f248::/32
-```
-
-`ASPNETCORE_FORWARDEDHEADERS_ENABLED` stays unset. `TrustedForwardingTests` covers `[client, Cloudflare, 10.x]` and `[1.2.3.4, client, Cloudflare, 10.x]` from `::1`; both resolve to the client. Re-check the Cloudflare lists when they change.
+The required forwarding settings (trusted proxies, Cloudflare ranges, ForwardLimit=3) now live in [DEPLOYMENT.md](DEPLOYMENT.md). Apply them to every Render service, test included.

@@ -1,6 +1,7 @@
 using System.Net;
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 
 namespace Moonlight.Tests;
 
@@ -24,6 +25,19 @@ public sealed class TrustedForwardingTests(PostgresFixture db) : IClassFixture<P
             context.Request.Headers["X-Forwarded-Proto"] = "https";
         });
         Assert.Equal(expected, result.Connection.RemoteIpAddress?.ToString());
+    }
+
+    [Theory]
+    [InlineData(null, null, false)]
+    [InlineData("::1", null, true)]
+    [InlineData(null, "10.0.0.0/8", true)]
+    public void Production_warning_applies_only_when_no_proxy_or_network_is_configured(string? proxy, string? network, bool expected)
+    {
+        var values = new Dictionary<string, string?>();
+        if (proxy is not null) values["ReverseProxy:KnownProxies:0"] = proxy;
+        if (network is not null) values["ReverseProxy:KnownNetworks:0"] = network;
+        var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        Assert.Equal(expected, Moonlight.Api.Infrastructure.TrustedForwarding.HasTrustConfigured(config));
     }
 
     [Theory]

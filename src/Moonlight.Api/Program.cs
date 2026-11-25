@@ -43,6 +43,8 @@ builder.AddMoonlight();
 
 var app = builder.Build();
 
+app.WarnIfForwardingUntrusted();
+
 app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages(context => Problems.WriteAsync(context.HttpContext, ErrorCodes.FromStatus(context.HttpContext.Response.StatusCode)));
